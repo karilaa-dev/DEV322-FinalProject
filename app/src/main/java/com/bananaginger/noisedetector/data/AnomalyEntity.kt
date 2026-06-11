@@ -3,15 +3,15 @@ package com.bananaginger.noisedetector.data
 /**
  * Entity representing a detected anomaly stored in the local Room database.
  *
- * Fields:
- * - `id`: primary key, auto-generated
- * - `timestamp`: epoch milliseconds when anomaly was detected
- * - `date` / `day`: optional human-readable date info
- * - `type`: anomaly type (e.g. "noise", "motion", "earthquake")
- * - `magnitude`: measured strength (optional)
- * - `severity`: integer severity level (optional)
- * - `description`: optional free-text note
- * - `metadata`: optional JSON string for extra structured data
+ * @property id Primary key, auto-generated.
+ * @property timestamp Epoch milliseconds when the anomaly was detected.
+ * @property date Human-readable date (e.g. "2026-06-10").
+ * @property day Day of week (e.g. "Thursday").
+ * @property type Anomaly type (e.g. "noise", "motion", "earthquake").
+ * @property magnitude Measured strength (e.g. dB, g-force). Nullable when not available.
+ * @property severity Integer severity level for quick filtering/sorting. Nullable if unknown.
+ * @property description Optional free-text note describing the anomaly.
+ * @property metadata Optional JSON string containing extra structured data.
  */
 
 import androidx.room.Entity
