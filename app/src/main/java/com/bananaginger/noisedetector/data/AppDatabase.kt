@@ -19,10 +19,12 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
-
         /**
          * Return a singleton AppDatabase instance.
          * Uses double-checked locking to ensure only one instance is created.
+         *
+         * @param context Application or activity context used to build the database.
+         * @return The `AppDatabase` singleton instance.
          */
         fun getInstance(context: Context): AppDatabase {
             // Return existing instance if available; use double-checked locking
