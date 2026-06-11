@@ -60,7 +60,30 @@ class AnomalyViewModel(
             }
         }
     }
+    fun startMonitoring() {
+        _uiState.value = _uiState.value.copy(
+            isMonitoring = true,
+            showHistory = false,
+            statusMessage = "Monitoring started. Listening for sound and motion.",
+            errorMessage = null
+        )
+    }
 
+    fun stopMonitoring() {
+        _uiState.value = _uiState.value.copy(
+            isMonitoring = false,
+            statusMessage = "Monitoring stopped.",
+            errorMessage = null
+        )
+    }
+
+    fun viewHistory() {
+        _uiState.value = _uiState.value.copy(
+            showHistory = true,
+            statusMessage = "Showing anomaly history.",
+            errorMessage = null
+        )
+    }
     companion object {
         val DEMO_LOCATION = LocationSnapshot(
             latitude = 47.6101,

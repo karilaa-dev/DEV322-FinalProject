@@ -7,5 +7,9 @@ data class AnomalyUiState(
     val isLoading: Boolean = false,
     val statusMessage: String = "Tap the button to test the nearby earthquake lookup.",
     val earthquake: EarthquakeSummary? = null,
-    val errorMessage: String? = null
-)
+    val errorMessage: String? = null,
+
+    val isMonitoring: Boolean = false,
+    val showHistory: Boolean = false
+
+    )
