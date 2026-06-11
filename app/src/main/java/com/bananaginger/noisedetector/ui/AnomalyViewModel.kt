@@ -2,7 +2,6 @@ package com.bananaginger.noisedetector.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bananaginger.noisedetector.data.model.AnomalyEvent
 import com.bananaginger.noisedetector.data.model.LocationSnapshot
 import com.bananaginger.noisedetector.data.repository.AnomalyRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,48 +17,34 @@ class AnomalyViewModel(
     private val _uiState = MutableStateFlow(AnomalyUiState())
     val uiState: StateFlow<AnomalyUiState> = _uiState.asStateFlow()
 
-    init {
-        observeAnomalies()
-    }
-
-    private fun observeAnomalies() {
-        viewModelScope.launch {
-            repository.observeAnomalies().collect { anomalies ->
-                _uiState.update { currentState ->
-                    currentState.copy(anomalies = anomalies)
-                }
-            }
-        }
-    }
-
-    fun recordDemoAnomaly() {
+    fun testEarthquakeApi() {
         viewModelScope.launch {
             _uiState.update { currentState ->
                 currentState.copy(
                     isLoading = true,
-                    statusMessage = "Recording demo anomaly...",
-                    warningMessage = null,
+                    statusMessage = "Checking nearby earthquakes...",
+                    earthquake = null,
                     errorMessage = null
                 )
             }
 
             try {
-                val result = repository.recordAnomaly(
-                    event = createDemoAnomaly(),
-                    location = DEMO_LOCATION
+                val earthquake = repository.testNearbyEarthquakeLookup(
+                    location = DEMO_LOCATION,
+                    eventTimeMillis = System.currentTimeMillis()
                 )
 
-                val statusMessage = if (result.earthquake != null) {
-                    "Demo anomaly saved with nearby earthquake data."
+                val statusMessage = if (earthquake != null) {
+                    "Earthquake API test complete. Nearby event found."
                 } else {
-                    "Demo anomaly saved. No nearby earthquake found."
+                    "Earthquake API test complete. No nearby event found."
                 }
 
                 _uiState.update { currentState ->
                     currentState.copy(
                         isLoading = false,
                         statusMessage = statusMessage,
-                        warningMessage = result.warningMessage,
+                        earthquake = earthquake,
                         errorMessage = null
                     )
                 }
@@ -67,23 +52,13 @@ class AnomalyViewModel(
                 _uiState.update { currentState ->
                     currentState.copy(
                         isLoading = false,
-                        statusMessage = "Could not record demo anomaly.",
-                        warningMessage = null,
+                        statusMessage = "Earthquake API test failed.",
+                        earthquake = null,
                         errorMessage = exception.message ?: "Unknown error"
                     )
                 }
             }
         }
-    }
-
-    private fun createDemoAnomaly(): AnomalyEvent {
-        return AnomalyEvent(
-            timestampMillis = System.currentTimeMillis(),
-            soundLevelDb = 82.0,
-            motionDetected = true,
-            thresholdDb = 75.0,
-            eventClassification = "abnormal_movement"
-        )
     }
 
     companion object {
