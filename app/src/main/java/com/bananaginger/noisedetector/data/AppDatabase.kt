@@ -25,15 +25,14 @@ abstract class AppDatabase : RoomDatabase() {
          * Uses double-checked locking to ensure only one instance is created.
          */
         fun getInstance(context: Context): AppDatabase {
-            // Return existing instance if available, otherwise create it safely.
+            // Return existing instance if available; use double-checked locking
+            // to avoid creating multiple instances under concurrency.
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
+                INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "app_database"
-                ).build()
-                INSTANCE = instance
-                instance
+                ).build().also { INSTANCE = it }
             }
         }
     }

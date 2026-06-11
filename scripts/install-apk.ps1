@@ -34,7 +34,8 @@ if (-not $adbCmd) {
 
 if (-not $adbCmd) {
     try {
-        $found = Get-ChildItem -Path 'C:\' -Filter 'adb.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+        # Limit recursive search to common program files roots to avoid full-drive scans.
+        $found = Get-ChildItem -Path 'C:\Program Files','C:\Program Files (x86)' -Filter 'adb.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
         if ($found) { $adbCmd = $found }
     } catch {}
 }

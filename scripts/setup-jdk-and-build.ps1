@@ -83,20 +83,20 @@ Write-Host "javac -version:"
 & javac -version 2>&1 | ForEach-Object { Write-Host $_ }
 
 if (-not $RunWithoutPrompt) {
-    $choice = Read-Host "Запустить сборку 'assembleDebug' сейчас? (Y/N)"
-    if ($choice -ne 'Y' -and $choice -ne 'y') { Write-Host "Отклонено. Скрипт завершён."; exit 0 }
+    $choice = Read-Host "Run assembleDebug build now? (Y/N)"
+    if ($choice -ne 'Y' -and $choice -ne 'y') { Write-Host "Declined. Script finished."; exit 0 }
 }
 
-Write-Host "Запускаю Gradle assembleDebug..."
+Write-Host "Running Gradle assembleDebug..."
 $gradle = Join-Path $projectRoot 'gradlew.bat'
 if (-not (Test-Path $gradle)) { Write-Error "gradlew.bat не найден в $gradle"; exit 1 }
 
 & $gradle 'assembleDebug'
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "Сборка завершена успешно. APK: $projectRoot\app\build\outputs\apk\debug\app-debug.apk"
+    Write-Host "Build completed successfully. APK: $projectRoot\app\build\outputs\apk\debug\app-debug.apk"
     exit 0
 } else {
-    Write-Error "Сборка завершилась с кодом $LASTEXITCODE"
+    Write-Error "Build finished with exit code $LASTEXITCODE"
     exit $LASTEXITCODE
 }

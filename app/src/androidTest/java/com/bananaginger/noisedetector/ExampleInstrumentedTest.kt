@@ -16,7 +16,7 @@ import org.junit.Assert.*
 class ExampleInstrumentedTest {
     @Test
     fun useAppContext() {
-        // Получаем контекст тестируемого приложения и проверяем packageName.
+        // Get the app-under-test context and verify its packageName.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
         assertEquals("com.bananaginger.noisedetector", appContext.packageName)
     }

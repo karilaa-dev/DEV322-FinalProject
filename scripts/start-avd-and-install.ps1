@@ -42,7 +42,7 @@ while ($waitSec -lt $maxWait) {
     try {
         $devs = & $adbPath devices 2>&1
         $devLines = $devs -split "`n" | Select-Object -Skip 1 | Where-Object { $_ -and $_ -notmatch '^\s*$' }
-        $connected = $devLines | Where-Object { $_ -match '\\S+\\s+device$' }
+        $connected = $devLines | Where-Object { $_ -match '\S+\s+device$' }
         if ($connected) { Write-Output "Device detected: $connected"; break }
     } catch {}
     Start-Sleep -Seconds 5

@@ -11,7 +11,7 @@ import org.junit.Assert.*
 class ExampleUnitTest {
     @Test
     fun addition_isCorrect() {
-        // Проверяет корректность простого арифметического выражения 2 + 2.
+        // Verifies a simple arithmetic expression: 2 + 2.
         assertEquals(4, 2 + 2)
     }
 }
