@@ -37,14 +37,21 @@ fun AnomalyScreen(
     AnomalyScreenContent(
         uiState = uiState,
         onTestEarthquakeApi = viewModel::testEarthquakeApi,
+        onStartMonitoringApi = viewModel::startMonitoring,
+        onStopMonitoringApi = viewModel::stopMonitoring,
+        onViewHistoryApi = viewModel::viewHistory,
         modifier = modifier
-    )
+        )
 }
 
 @Composable
 private fun AnomalyScreenContent(
     uiState: AnomalyUiState,
     onTestEarthquakeApi: () -> Unit,
+    onStartMonitoringApi: () -> Unit,
+    onStopMonitoringApi: () -> Unit,
+    onViewHistoryApi: () -> Unit,
+
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -67,6 +74,27 @@ private fun AnomalyScreenContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(if (uiState.isLoading) "Testing..." else "Test Earthquake API")
+        }
+
+        Button(
+            onClick = { onStartMonitoringApi },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Start Monitoring")
+        }
+
+        Button(
+            onClick = { onStopMonitoringApi},
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Stop Monitoring")
+        }
+
+        Button(
+            onClick = { onViewHistoryApi },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("View History")
         }
 
         if (uiState.isLoading) {
@@ -163,7 +191,10 @@ private fun AnomalyScreenPreview() {
                     timeMillis = 1_765_000_000_000
                 )
             ),
-            onTestEarthquakeApi = {}
+            onTestEarthquakeApi = {},
+            onStartMonitoringApi = {},
+            onStopMonitoringApi = {},
+            onViewHistoryApi = {}
         )
     }
 }
