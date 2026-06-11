@@ -23,7 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
-import com.bananaginger.noisedetector.data.local.AnomalyEntity
+import com.bananaginger.noisedetector.data.AnomalyEntity
 import com.bananaginger.noisedetector.ui.theme.NoiseAndMotionAnomalyDetectorTheme
 import java.text.DateFormat
 import java.util.Date
@@ -137,7 +137,7 @@ private fun AnomalyRow(anomaly: AnomalyEntity) {
             .padding(vertical = 4.dp)
     ) {
         Text(
-            text = anomaly.timestampMillis.toDisplayTime(),
+            text = anomaly.timestamp.toDisplayTime(),
             style = MaterialTheme.typography.titleSmall
         )
         Text(
@@ -196,11 +196,14 @@ private fun AnomalyScreenPreview() {
                 anomalies = listOf(
                     AnomalyEntity(
                         id = 1,
-                        timestampMillis = 1_765_000_000_000,
+                        timestamp = 1_765_000_000_000,
+                        type = "abnormal_movement",
+                        magnitude = 82.0,
+                        severity = 2,
+                        description = "Demo anomaly with nearby earthquake",
                         soundLevelDb = 82.0,
                         motionDetected = true,
                         thresholdDb = 75.0,
-                        eventClassification = "abnormal_movement",
                         latitude = 47.6101,
                         longitude = -122.2015,
                         earthquakeId = "uw123456",

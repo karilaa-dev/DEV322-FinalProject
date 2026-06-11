@@ -1,6 +1,6 @@
 package com.bananaginger.noisedetector.ui
 
-import com.bananaginger.noisedetector.data.local.AnomalyEntity
+import com.bananaginger.noisedetector.data.AnomalyEntity
 
 // BananaGinger/Kyryl: Screen state for anomaly history, loading, status, and recoverable errors.
 data class AnomalyUiState(

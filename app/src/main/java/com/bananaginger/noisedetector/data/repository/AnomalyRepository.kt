@@ -1,7 +1,7 @@
 package com.bananaginger.noisedetector.data.repository
 
-import com.bananaginger.noisedetector.data.local.AnomalyDao
-import com.bananaginger.noisedetector.data.local.AnomalyEntity
+import com.bananaginger.noisedetector.data.AnomalyDao
+import com.bananaginger.noisedetector.data.AnomalyEntity
 import com.bananaginger.noisedetector.data.model.AnomalyEvent
 import com.bananaginger.noisedetector.data.model.EarthquakeSummary
 import com.bananaginger.noisedetector.data.model.LocationSnapshot
@@ -18,7 +18,7 @@ class AnomalyRepository(
     private val earthquakeDataSource: EarthquakeDataSource
 ) {
     fun observeAnomalies(): Flow<List<AnomalyEntity>> {
-        return dao.observeAnomalies()
+        return dao.getAll()
     }
 
     suspend fun recordAnomaly(
@@ -45,7 +45,7 @@ class AnomalyRepository(
             }
         }
 
-        val anomalyId = dao.insertAnomaly(event.toEntity(location, earthquake))
+        val anomalyId = dao.insert(event.toEntity(location, earthquake))
         RecordAnomalyResult(
             anomalyId = anomalyId,
             earthquake = earthquake,
@@ -58,11 +58,15 @@ class AnomalyRepository(
         earthquake: EarthquakeSummary?
     ): AnomalyEntity {
         return AnomalyEntity(
-            timestampMillis = timestampMillis,
+            timestamp = timestampMillis,
+            type = eventClassification,
+            magnitude = soundLevelDb,
+            severity = if (motionDetected && soundLevelDb >= thresholdDb) 2 else 1,
+            description = "Sound ${soundLevelDb} dB with motion detected: $motionDetected",
+            metadata = earthquake?.let { "nearbyEarthquakeId=${it.id}" },
             soundLevelDb = soundLevelDb,
             motionDetected = motionDetected,
             thresholdDb = thresholdDb,
-            eventClassification = eventClassification,
             latitude = location?.latitude,
             longitude = location?.longitude,
             earthquakeId = earthquake?.id,

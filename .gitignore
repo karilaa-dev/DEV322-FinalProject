@@ -13,6 +13,9 @@ local.properties
 .idea/workspace.xml
 .idea/navEditor.xml
 .idea/assetWizardSettings.xml
+.idea/deviceManager.xml
+.idea/markdown.xml
+.idea/vcs.xml
 
 # Android build output
 captures/

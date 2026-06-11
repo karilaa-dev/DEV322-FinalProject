@@ -1,7 +1,7 @@
 package com.bananaginger.noisedetector.data.repository
 
-import com.bananaginger.noisedetector.data.local.AnomalyDao
-import com.bananaginger.noisedetector.data.local.AnomalyEntity
+import com.bananaginger.noisedetector.data.AnomalyDao
+import com.bananaginger.noisedetector.data.AnomalyEntity
 import com.bananaginger.noisedetector.data.model.AnomalyEvent
 import com.bananaginger.noisedetector.data.model.EarthquakeSummary
 import com.bananaginger.noisedetector.data.model.LocationSnapshot
@@ -81,9 +81,9 @@ class AnomalyRepositoryTest {
         val saved = dao.inserted.single()
         assertEquals(1L, result.anomalyId)
         assertNull(saved.earthquakeId)
-        assertEquals(82.0, saved.soundLevelDb, 0.0)
+        assertEquals(82.0, saved.soundLevelDb ?: -1.0, 0.0)
         assertEquals(true, saved.motionDetected)
-        assertEquals("abnormal_movement", saved.eventClassification)
+        assertEquals("abnormal_movement", saved.type)
     }
 
     private fun sampleEvent(): AnomalyEvent {
@@ -120,16 +120,32 @@ class AnomalyRepositoryTest {
         private val anomalies = MutableStateFlow<List<AnomalyEntity>>(emptyList())
         private var nextId = 1L
 
-        override fun observeAnomalies(): Flow<List<AnomalyEntity>> {
+        override fun getAll(): Flow<List<AnomalyEntity>> {
             return anomalies
         }
 
-        override suspend fun insertAnomaly(anomaly: AnomalyEntity): Long {
+        override suspend fun insert(anomaly: AnomalyEntity): Long {
             val saved = anomaly.copy(id = nextId++)
             inserted.add(saved)
             anomalies.value = listOf(saved) + anomalies.value
             return saved.id
         }
+
+        override suspend fun insertAll(anomalies: List<AnomalyEntity>) = Unit
+
+        override suspend fun update(anomaly: AnomalyEntity) = Unit
+
+        override suspend fun delete(anomaly: AnomalyEntity) = Unit
+
+        override fun getById(id: Long): Flow<AnomalyEntity?> {
+            return MutableStateFlow(inserted.firstOrNull { it.id == id })
+        }
+
+        override fun getSince(since: Long): Flow<List<AnomalyEntity>> {
+            return MutableStateFlow(inserted.filter { it.timestamp >= since })
+        }
+
+        override suspend fun deleteOlderThan(cutoff: Long) = Unit
     }
 
     private class FakeEarthquakeDataSource(
