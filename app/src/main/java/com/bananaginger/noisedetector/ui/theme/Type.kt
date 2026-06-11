@@ -1,5 +1,10 @@
 package com.bananaginger.noisedetector.ui.theme
 
+/**
+ * Typography definitions used by the app.
+ * Provides a `Typography` instance for `MaterialTheme`.
+ */
+
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily

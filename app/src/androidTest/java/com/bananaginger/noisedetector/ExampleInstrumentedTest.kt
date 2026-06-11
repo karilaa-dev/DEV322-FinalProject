@@ -9,15 +9,14 @@ import org.junit.runner.RunWith
 import org.junit.Assert.*
 
 /**
- * Instrumented test, which will execute on an Android device.
- *
- * See [testing documentation](http://d.android.com/tools/testing).
+ * Instrumented test file that runs on an Android device or emulator.
+ * Verifies app context and basic instrumentation setup.
  */
 @RunWith(AndroidJUnit4::class)
 class ExampleInstrumentedTest {
     @Test
     fun useAppContext() {
-        // Context of the app under test.
+        // Получаем контекст тестируемого приложения и проверяем packageName.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
         assertEquals("com.bananaginger.noisedetector", appContext.packageName)
     }
