@@ -26,6 +26,12 @@ import com.bananaginger.noisedetector.ui.theme.NoiseAndMotionAnomalyDetectorThem
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 
 @Composable
 fun AnomalyScreen(
@@ -34,10 +40,37 @@ fun AnomalyScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
+    val context = LocalContext.current
+
+    val microphonePermissionLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission()
+        ) { isGranted ->
+            if (isGranted) {
+                viewModel.startMonitoring()
+            } else {
+                viewModel.microphonePermissionDenied()
+            }
+        }
+
     AnomalyScreenContent(
         uiState = uiState,
         onTestEarthquakeApi = viewModel::testEarthquakeApi,
-        onStartMonitoringApi = viewModel::startMonitoring,
+        onStartMonitoringApi = {
+            val permissionGranted =
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+
+            if (permissionGranted) {
+                viewModel.startMonitoring()
+            } else {
+                microphonePermissionLauncher.launch(
+                    Manifest.permission.RECORD_AUDIO
+                )
+            }
+        },
         onStopMonitoringApi = viewModel::stopMonitoring,
         onViewHistoryApi = viewModel::viewHistory,
         modifier = modifier
@@ -51,7 +84,6 @@ private fun AnomalyScreenContent(
     onStartMonitoringApi: () -> Unit,
     onStopMonitoringApi: () -> Unit,
     onViewHistoryApi: () -> Unit,
-
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -64,34 +96,73 @@ private fun AnomalyScreenContent(
             text = "Noise and Motion Anomaly Detector",
             style = MaterialTheme.typography.headlineSmall
         )
+
         Text(
-            text = "Earthquake API integration",
+            text = "Sensor monitoring",
             style = MaterialTheme.typography.titleMedium
         )
-        Button(
-            onClick = onTestEarthquakeApi,
-            enabled = !uiState.isLoading,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(if (uiState.isLoading) "Testing..." else "Test Earthquake API")
-        }
+
+        Text(
+            text = "Monitoring: ${
+                if (uiState.isMonitoring) "ACTIVE" else "STOPPED"
+            }"
+        )
+
+        Text(
+            text = "Estimated sound level: ${
+                uiState.estimatedSoundLevelDb.formatOneDecimal()
+            } dB"
+        )
+
+        Text(
+            text = "Acceleration magnitude: ${
+                uiState.accelerationMagnitude.formatOneDecimal()
+            } m/s²"
+        )
+
+        Text(
+            text = "Motion detected: ${uiState.motionDetected}"
+        )
 
         Button(
-            onClick = { onStartMonitoringApi },
+            onClick = onStartMonitoringApi,
+            enabled = !uiState.isMonitoring,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Start Monitoring")
         }
 
         Button(
-            onClick = { onStopMonitoringApi},
+            onClick = onStopMonitoringApi,
+            enabled = uiState.isMonitoring,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Stop Monitoring")
         }
 
+        HorizontalDivider()
+
+        Text(
+            text = "Earthquake API integration",
+            style = MaterialTheme.typography.titleMedium
+        )
+
         Button(
-            onClick = { onViewHistoryApi },
+            onClick = onTestEarthquakeApi,
+            enabled = !uiState.isLoading,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                if (uiState.isLoading) {
+                    "Testing..."
+                } else {
+                    "Test Earthquake API"
+                }
+            )
+        }
+
+        Button(
+            onClick = onViewHistoryApi,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("View History")
@@ -102,7 +173,10 @@ private fun AnomalyScreenContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp)
+                )
+
                 Text("Checking nearby earthquakes...")
             }
         }
@@ -111,6 +185,7 @@ private fun AnomalyScreenContent(
             text = uiState.statusMessage,
             style = MaterialTheme.typography.bodyMedium
         )
+
         uiState.errorMessage?.let { error ->
             Text(
                 text = "Error: $error",
@@ -127,7 +202,9 @@ private fun AnomalyScreenContent(
 }
 
 @Composable
-private fun EarthquakeResult(earthquake: EarthquakeSummary) {
+private fun EarthquakeResult(
+    earthquake: EarthquakeSummary
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -138,22 +215,32 @@ private fun EarthquakeResult(earthquake: EarthquakeSummary) {
             style = MaterialTheme.typography.titleLarge
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(
+            modifier = Modifier.height(4.dp)
+        )
 
         Text(
-            text = "M${earthquake.magnitude.formatNullable()} ${earthquake.place}",
+            text = "M${earthquake.magnitude.formatNullable()} " +
+                    earthquake.place,
             style = MaterialTheme.typography.bodyMedium
         )
+
         Text(
             text = "Depth ${earthquake.depthKm.formatNullable()} km",
             style = MaterialTheme.typography.bodyMedium
         )
+
         Text(
-            text = "Coordinates ${earthquake.latitude.formatOneDecimal()}, ${earthquake.longitude.formatOneDecimal()}",
+            text = "Coordinates ${
+                earthquake.latitude.formatOneDecimal()
+            }, ${earthquake.longitude.formatOneDecimal()}",
             style = MaterialTheme.typography.bodyMedium
         )
+
         Text(
-            text = "Time ${earthquake.timeMillis?.toDisplayTime() ?: "unknown"}",
+            text = "Time ${
+                earthquake.timeMillis?.toDisplayTime() ?: "unknown"
+            }",
             style = MaterialTheme.typography.bodyMedium
         )
     }
@@ -164,11 +251,25 @@ private fun Long.toDisplayTime(): String {
         DateFormat.SHORT,
         DateFormat.SHORT,
         Locale.US
-    ).format(Date(this))
+    ).format(
+        Date(this)
+    )
+}
+
+private fun Float.formatOneDecimal(): String {
+    return String.format(
+        Locale.US,
+        "%.1f",
+        this
+    )
 }
 
 private fun Double.formatOneDecimal(): String {
-    return String.format(Locale.US, "%.1f", this)
+    return String.format(
+        Locale.US,
+        "%.1f",
+        this
+    )
 }
 
 private fun Double?.formatNullable(): String {

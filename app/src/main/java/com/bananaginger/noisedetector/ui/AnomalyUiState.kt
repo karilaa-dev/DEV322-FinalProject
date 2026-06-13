@@ -10,6 +10,11 @@ data class AnomalyUiState(
     val errorMessage: String? = null,
 
     val isMonitoring: Boolean = false,
-    val showHistory: Boolean = false
+    val showHistory: Boolean = false,
 
-    )
+    // BananaGinger/Dylan: level values for sensors
+
+    val estimatedSoundLevelDb: Double = 0.0,
+    val accelerationMagnitude: Float = 0.0f,
+    val motionDetected: Boolean = false
+)
