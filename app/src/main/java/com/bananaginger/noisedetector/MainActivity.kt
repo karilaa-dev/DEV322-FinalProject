@@ -27,19 +27,53 @@ import com.bananaginger.noisedetector.ui.AnomalyViewModel
 import com.bananaginger.noisedetector.ui.AnomalyViewModelFactory
 import com.bananaginger.noisedetector.ui.theme.NoiseAndMotionAnomalyDetectorTheme
 
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import com.bananaginger.noisedetector.data.sensor.AndroidMotionSensorReader
+import com.bananaginger.noisedetector.data.sensor.AndroidSoundSensorReader
+import com.bananaginger.noisedetector.data.sensor.MotionSensorReader
+import com.bananaginger.noisedetector.data.sensor.SoundSensorReader
+import com.bananaginger.noisedetector.ui.AnomalyScreen
+import com.bananaginger.noisedetector.ui.theme.NoiseAndMotionAnomalyDetectorTheme
+
 class MainActivity : ComponentActivity() {
     private val database: AppDatabase by lazy {
         AppDatabase.getInstance(applicationContext)
     }
 
     private val repository: AnomalyRepository by lazy {
-        val remoteDataSource = EarthquakeRemoteDataSource(RetrofitProvider.earthquakeApi)
-        AnomalyRepository(database.anomalyDao(), remoteDataSource)
+        val remoteDataSource =
+            EarthquakeRemoteDataSource(
+                RetrofitProvider.earthquakeApi
+            )
+
+        AnomalyRepository(
+            database.anomalyDao(),
+            remoteDataSource
+        )
+    }
+
+    private val motionSensorReader: MotionSensorReader by lazy {
+        AndroidMotionSensorReader(applicationContext)
+    }
+
+    private val soundSensorReader: SoundSensorReader by lazy {
+        AndroidSoundSensorReader(applicationContext)
     }
 
     private val anomalyViewModel: AnomalyViewModel by viewModels {
-        AnomalyViewModelFactory(repository)
+        AnomalyViewModelFactory(
+            repository = repository,
+            motionSensorReader = motionSensorReader,
+            soundSensorReader = soundSensorReader
+        )
     }
+
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
