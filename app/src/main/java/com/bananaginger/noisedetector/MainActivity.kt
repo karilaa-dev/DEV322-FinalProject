@@ -17,11 +17,14 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import com.bananaginger.noisedetector.data.AppDatabase
 import com.bananaginger.noisedetector.data.remote.EarthquakeRemoteDataSource
 import com.bananaginger.noisedetector.data.remote.RetrofitProvider
 import com.bananaginger.noisedetector.data.repository.AnomalyRepository
+import com.bananaginger.noisedetector.history.AnomalyHistoryScreen
 import com.bananaginger.noisedetector.ui.AnomalyScreen
 import com.bananaginger.noisedetector.ui.AnomalyViewModel
 import com.bananaginger.noisedetector.ui.AnomalyViewModelFactory
@@ -79,14 +82,27 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Enable edge-to-edge rendering so content may draw behind system bars.
         enableEdgeToEdge()
+        // If started with intent extra `showHistory=true`, open History for testing.
+        if (intent?.getBooleanExtra("showHistory", false) == true) {
+            anomalyViewModel.viewHistory()
+        }
         // Set the Compose UI content and apply the app theme.
         setContent {
             NoiseAndMotionAnomalyDetectorTheme {
+                val uiState by anomalyViewModel.uiState.collectAsState()
+
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    AnomalyScreen(
-                        viewModel = anomalyViewModel,
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                    if (uiState.showHistory) {
+                        AnomalyHistoryScreen(
+                            onBack = { anomalyViewModel.hideHistory() },
+                            modifier = Modifier.padding(innerPadding)
+                        )
+                    } else {
+                        AnomalyScreen(
+                            viewModel = anomalyViewModel,
+                            modifier = Modifier.padding(innerPadding)
+                        )
+                    }
                 }
             }
         }

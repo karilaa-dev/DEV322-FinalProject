@@ -172,6 +172,16 @@ class AnomalyViewModel(
         }
     }
 
+    fun hideHistory() {
+        _uiState.update { currentState ->
+            currentState.copy(
+                showHistory = false,
+                statusMessage = "",
+                errorMessage = null
+            )
+        }
+    }
+
     private fun handleSensorFailure(exception: Throwable) {
         if (exception is CancellationException) {
             return
