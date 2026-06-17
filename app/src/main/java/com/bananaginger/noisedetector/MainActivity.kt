@@ -93,7 +93,10 @@ class MainActivity : ComponentActivity() {
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     if (uiState.showHistory) {
+                        // Show the history screen, passing the in-memory entry list.
+                        // onBack calls hideHistory() which sets showHistory = false.
                         AnomalyHistoryScreen(
+                            entries = uiState.historyEntries,
                             onBack = { anomalyViewModel.hideHistory() },
                             modifier = Modifier.padding(innerPadding)
                         )
