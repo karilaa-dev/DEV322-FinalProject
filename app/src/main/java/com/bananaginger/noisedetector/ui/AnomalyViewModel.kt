@@ -3,6 +3,7 @@ package com.bananaginger.noisedetector.ui
 import android.hardware.SensorManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bananaginger.noisedetector.data.AnomalyEntity
 import com.bananaginger.noisedetector.data.model.EarthquakeSummary
 import com.bananaginger.noisedetector.data.model.LocationSnapshot
 import com.bananaginger.noisedetector.data.repository.AnomalyRepository
@@ -39,6 +40,7 @@ import kotlin.math.abs
  *
  * BananaGinger/Kyryl: ViewModel owns coroutine scope and exposes StateFlow to Compose.
  */
+// BananaGinger/Kyryl: ViewModel owns coroutine scope and exposes StateFlow to Compose.
 class AnomalyViewModel(
     private val repository: AnomalyRepository,
     private val motionSensorReader: MotionSensorReader,
@@ -64,6 +66,11 @@ class AnomalyViewModel(
     private val dateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private val timeFmt = SimpleDateFormat("HH:mm:ss",   Locale.US)
     private val dayFmt  = SimpleDateFormat("EEEE",       Locale.US)
+
+    // dylan anomaly history
+    init {
+        observeAnomalyHistory()
+    }
 
     /**
      * Sends a test earthquake lookup for the hard-coded demo location.
@@ -127,6 +134,9 @@ class AnomalyViewModel(
      * Recording thresholds (deliberately low so history fills up quickly):
      *   Sound  : > 30.0 dB  (HistoryEntry.SOUND_THRESHOLD_DB)
      *   Motion : deviation from gravity > 0.5 m/s²  (HistoryEntry.MOTION_THRESHOLD)
+     *
+     * The merged WITH POPUP detector uses its original combined rule instead:
+     * sound > 50.0 dB AND motion deviation > 1.5 m/s².
      */
     fun startMonitoring() {
         // Guard: do not start a second pair of jobs if already running.
@@ -160,14 +170,8 @@ class AnomalyViewModel(
                     )}
 
                     // Record to history when the (low) threshold is exceeded.
-                    if (deviationFromGravity > HistoryEntry.MOTION_THRESHOLD) {
-                        maybeRecord(
-                            type = HistoryEntry.TYPE_MOTION,
-                            soundLevelDb = _uiState.value.estimatedSoundLevelDb,
-                            accelerationMagnitude = reading.accelerationMagnitude,
-                            motionDetected = motionDetected
-                        )
-                    }
+
+                    evaluateAndRecordAnomaly()
                 }
         }
 
@@ -182,14 +186,8 @@ class AnomalyViewModel(
                     )}
 
                     // Record to history when the (low) threshold is exceeded.
-                    if (reading.estimatedSoundLevelDb > HistoryEntry.SOUND_THRESHOLD_DB) {
-                        maybeRecord(
-                            type = HistoryEntry.TYPE_SOUND,
-                            soundLevelDb = reading.estimatedSoundLevelDb,
-                            accelerationMagnitude = _uiState.value.accelerationMagnitude,
-                            motionDetected = _uiState.value.motionDetected
-                        )
-                    }
+
+                    evaluateAndRecordAnomaly()
                 }
         }
     }
@@ -206,6 +204,7 @@ class AnomalyViewModel(
             estimatedSoundLevelDb = 0.0,
             accelerationMagnitude = 0.0f,
             motionDetected = false,
+            anomalyDetected = false,
             statusMessage = "Monitoring stopped.",
             errorMessage = null
         )}
@@ -234,6 +233,152 @@ class AnomalyViewModel(
         )}
     }
 
+    private fun observeAnomalyHistory() {
+        viewModelScope.launch {
+            repository.observeAnomalies()
+                .catch { exception ->
+                    _uiState.update { currentState ->
+                        currentState.copy(
+                            errorMessage = exception.message
+                                ?: "Unable to load anomaly history."
+                        )
+                    }
+                }
+                .collect { anomalies ->
+                    val savedEntries = anomalies.map { anomaly ->
+                        anomaly.toHistoryEntry()
+                    }
+
+                    _uiState.update { currentState ->
+                        val entriesNotYetInRoom =
+                            currentState.historyEntries.filter { currentEntry ->
+                                savedEntries.none { savedEntry ->
+                                    savedEntry.id == currentEntry.id
+                                }
+                            }
+
+                        currentState.copy(
+                            historyEntries =
+                                (savedEntries + entriesNotYetInRoom)
+                                    .distinctBy { entry -> entry.id }
+                                    .sortedByDescending { entry -> entry.timestamp }
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun AnomalyEntity.toHistoryEntry(): HistoryEntry {
+        val detectedAt = Date(timestamp)
+        val normalizedType = when (type.uppercase(Locale.US)) {
+            "SOUND_AND_MOTION" -> HistoryEntry.TYPE_SOUND_AND_MOTION
+            "SOUND" -> HistoryEntry.TYPE_SOUND
+            "NOISE" -> HistoryEntry.TYPE_SOUND
+            "MOTION" -> HistoryEntry.TYPE_MOTION
+            "EARTHQUAKE" -> HistoryEntry.TYPE_EARTHQUAKE
+            else -> type.uppercase(Locale.US)
+        }
+
+        val savedAcceleration = metadata
+            ?.split(';')
+            ?.firstOrNull { value ->
+                value.startsWith("accelerationMagnitude=")
+            }
+            ?.substringAfter("accelerationMagnitude=")
+            ?.toFloatOrNull()
+
+        return HistoryEntry(
+            id = timestamp,
+            timestamp = timestamp,
+            date = date ?: dateFmt.format(detectedAt),
+            time = timeFmt.format(detectedAt),
+            day = day ?: dayFmt.format(detectedAt),
+            type = normalizedType,
+            soundLevelDb = when (normalizedType) {
+                HistoryEntry.TYPE_SOUND,
+                HistoryEntry.TYPE_SOUND_AND_MOTION -> magnitude
+                else -> null
+            },
+            accelerationMagnitude = when (normalizedType) {
+                HistoryEntry.TYPE_MOTION,
+                HistoryEntry.TYPE_SOUND_AND_MOTION -> savedAcceleration
+                else -> null
+            },
+            motionDetected = normalizedType == HistoryEntry.TYPE_MOTION ||
+                    normalizedType == HistoryEntry.TYPE_SOUND_AND_MOTION,
+            severity = severity ?: 1,
+            description = description ?: "$normalizedType anomaly detected"
+        )
+    }
+
+    fun dismissAnomalyDialog() {
+        _uiState.update { currentState ->
+            currentState.copy(
+                showAnomalyDialog = false
+            )
+        }
+    }
+
+    // dylan calculate whether something is an anomaly
+    private fun evaluateAndRecordAnomaly() {
+        val currentState = _uiState.value
+
+        val thresholdMet =
+            currentState.estimatedSoundLevelDb > SOUND_THRESHOLD_DB &&
+                    currentState.motionDetected
+
+        _uiState.update { state ->
+            state.copy(
+                anomalyDetected = thresholdMet
+            )
+        }
+
+        if (!thresholdMet) {
+            return
+        }
+
+        val recordedEntry = maybeRecord(
+            type = HistoryEntry.TYPE_SOUND_AND_MOTION,
+            soundLevelDb = currentState.estimatedSoundLevelDb,
+            accelerationMagnitude = currentState.accelerationMagnitude,
+            motionDetected = currentState.motionDetected
+        ) ?: return
+
+        _uiState.update { state ->
+            state.copy(
+                showAnomalyDialog = true,
+                statusMessage = "Anomaly detected."
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                val earthquake = repository.recordAnomaly(
+                    soundLevelDb = recordedEntry.soundLevelDb ?: 0.0,
+                    accelerationMagnitude =
+                        recordedEntry.accelerationMagnitude ?: 0.0f,
+                    location = DEMO_LOCATION,
+                    eventTimeMillis = recordedEntry.timestamp
+                )
+
+                _uiState.update { state ->
+                    state.copy(
+                        statusMessage = "Anomaly detected and saved.",
+                        earthquake = earthquake,
+                        errorMessage = null
+                    )
+                }
+            } catch (exception: Exception) {
+                _uiState.update { state ->
+                    state.copy(
+                        errorMessage = exception.message
+                            ?: "Unable to save anomaly."
+                    )
+                }
+            }
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
@@ -260,12 +405,12 @@ class AnomalyViewModel(
         accelerationMagnitude: Float,
         motionDetected: Boolean,
         earthquakeSummary: EarthquakeSummary? = null
-    ) {
+    ): HistoryEntry? {
         val now  = System.currentTimeMillis()
         val last = lastRecordedMs[type] ?: 0L
 
         // Debounce: skip if we recorded this type too recently.
-        if (now - last < HistoryEntry.MIN_INTERVAL_MS) return
+        if (now - last < HistoryEntry.MIN_INTERVAL_MS) return null
         lastRecordedMs[type] = now
 
         val date = Date(now)
@@ -304,6 +449,8 @@ class AnomalyViewModel(
                 // TODO: add a retry queue when a real server endpoint is provided.
             }
         }
+
+        return entry
     }
 
     /**
@@ -337,6 +484,24 @@ class AnomalyViewModel(
                 else    -> 1
             }
         }
+        HistoryEntry.TYPE_SOUND_AND_MOTION -> {
+            val soundSeverity = when {
+                soundDb > 100 -> 5
+                soundDb > 80  -> 4
+                soundDb > 65  -> 3
+                soundDb > 50  -> 2
+                else          -> 1
+            }
+            val dev = abs(accel - SensorManager.GRAVITY_EARTH)
+            val motionSeverity = when {
+                dev > 8 -> 5
+                dev > 4 -> 4
+                dev > 2 -> 3
+                dev > 1 -> 2
+                else    -> 1
+            }
+            maxOf(soundSeverity, motionSeverity)
+        }
         HistoryEntry.TYPE_EARTHQUAKE -> when {
             (magnitude ?: 0.0) >= 6.0 -> 5
             (magnitude ?: 0.0) >= 4.5 -> 4
@@ -362,6 +527,11 @@ class AnomalyViewModel(
     ): String = when (type) {
         HistoryEntry.TYPE_SOUND      -> "Sound spike %.1f dB".format(soundDb)
         HistoryEntry.TYPE_MOTION     -> "Motion detected %.1f m/s\u00B2".format(accel)
+        HistoryEntry.TYPE_SOUND_AND_MOTION ->
+            "Loud sound %.1f dB and movement %.1f m/s\u00B2 detected".format(
+                soundDb,
+                accel
+            )
         HistoryEntry.TYPE_EARTHQUAKE ->
             if (earthquake != null)
                 "M%.1f \u2014 %s".format(earthquake.magnitude ?: 0.0, earthquake.place)
@@ -398,6 +568,13 @@ class AnomalyViewModel(
          * This is higher than HistoryEntry.MOTION_THRESHOLD which controls recording.
          */
         private const val MOTION_DISPLAY_THRESHOLD = 1.5f
+
+        // dylan anomaly threshholds
+        // THIS IS WHAT IS SHOULD BE
+        private const val SOUND_THRESHOLD_DB = 50.0
+
+        // ZERO FOR TESTING PURPOSE
+        //private const val SOUND_THRESHOLD_DB = 00.0
 
         /** Demo location used for earthquake API tests (Bellevue, WA). */
         val DEMO_LOCATION = LocationSnapshot(

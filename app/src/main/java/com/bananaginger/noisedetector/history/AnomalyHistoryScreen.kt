@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
  *   - Screen rotation
  *   - App going to background
  * The list is cleared when the process is killed (app fully closed by the user).
+ * Room-backed SOUND_AND_MOTION entries are restored into the list by the merged ViewModel.
  *
  * @param entries  List of recorded anomaly events, newest first.
  * @param onBack   Callback invoked when the user taps the Back button.
@@ -194,10 +195,11 @@ private fun HistoryEntryCard(entry: HistoryEntry) {
  */
 @Composable
 private fun typeColor(type: String) = when (type) {
-    HistoryEntry.TYPE_SOUND      -> MaterialTheme.colorScheme.tertiary
-    HistoryEntry.TYPE_MOTION     -> MaterialTheme.colorScheme.primary
-    HistoryEntry.TYPE_EARTHQUAKE -> MaterialTheme.colorScheme.error
-    else                         -> MaterialTheme.colorScheme.onSurface
+    HistoryEntry.TYPE_SOUND            -> MaterialTheme.colorScheme.tertiary
+    HistoryEntry.TYPE_MOTION           -> MaterialTheme.colorScheme.primary
+    HistoryEntry.TYPE_EARTHQUAKE       -> MaterialTheme.colorScheme.error
+    HistoryEntry.TYPE_SOUND_AND_MOTION -> MaterialTheme.colorScheme.error   // combined sound and motion
+    else                               -> MaterialTheme.colorScheme.onSurface
 }
 
 @Preview(showBackground = true)
