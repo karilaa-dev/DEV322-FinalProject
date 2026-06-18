@@ -33,6 +33,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 
+// dylan shows a dialoge box if an anomaly happens
 @Composable
 fun AnomalyScreen(
     viewModel: AnomalyViewModel,
@@ -74,7 +75,7 @@ fun AnomalyScreen(
         onStopMonitoringApi = viewModel::stopMonitoring,
         onViewHistoryApi = viewModel::viewHistory,
         modifier = modifier
-        )
+    )
 }
 
 @Composable
@@ -122,6 +123,10 @@ private fun AnomalyScreenContent(
 
         Text(
             text = "Motion detected: ${uiState.motionDetected}"
+        )
+
+        Text(
+            text = "Anomaly detected: ${uiState.anomalyDetected}"
         )
 
         Button(

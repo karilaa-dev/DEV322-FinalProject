@@ -13,15 +13,19 @@ data class AnomalyUiState(
     val isMonitoring: Boolean = false,
     val showHistory: Boolean = false,
 
-    // BananaGinger/Dylan: level values for sensors
     val estimatedSoundLevelDb: Double = 0.0,
     val accelerationMagnitude: Float = 0.0f,
     val motionDetected: Boolean = false,
 
+    val anomalyDetected: Boolean = false,
+    val showAnomalyDialog: Boolean = false,
+
+    // anomaly history list
     /**
      * In-memory detection history for the current session.
      * Survives rotation and going to background; cleared when the process is killed.
      * Entries are appended by AnomalyViewModel when sensor thresholds are crossed.
+     * Room-backed popup detections are also restored into this list when available.
      */
     val historyEntries: List<HistoryEntry> = emptyList()
 )

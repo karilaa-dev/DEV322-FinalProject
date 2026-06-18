@@ -77,6 +77,9 @@ data class HistoryEntry(
         const val TYPE_MOTION     = "MOTION"
         const val TYPE_EARTHQUAKE = "EARTHQUAKE"
 
+        // dylan combined sound and motion
+        const val TYPE_SOUND_AND_MOTION = "SOUND_AND_MOTION"
+
         /** Recording threshold for sound (deliberately low). */
         const val SOUND_THRESHOLD_DB = 30.0
 
