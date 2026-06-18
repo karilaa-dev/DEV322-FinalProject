@@ -1,6 +1,7 @@
 package com.bananaginger.noisedetector.ui
 
 import com.bananaginger.noisedetector.data.model.EarthquakeSummary
+import com.bananaginger.noisedetector.data.AnomalyEntity
 
 // BananaGinger/Kyryl: Screen state for testing one USGS earthquake API lookup.
 data class AnomalyUiState(
@@ -16,5 +17,8 @@ data class AnomalyUiState(
 
     val estimatedSoundLevelDb: Double = 0.0,
     val accelerationMagnitude: Float = 0.0f,
-    val motionDetected: Boolean = false
+    val motionDetected: Boolean = false,
+    val anomalyDetected: Boolean = false,
+    val anomalyHistory: List<AnomalyEntity> = emptyList(),
+    val showAnomalyDialog: Boolean = false,
 )

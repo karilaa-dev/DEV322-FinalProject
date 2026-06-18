@@ -32,6 +32,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 
 @Composable
 fun AnomalyScreen(
@@ -73,6 +76,7 @@ fun AnomalyScreen(
         },
         onStopMonitoringApi = viewModel::stopMonitoring,
         onViewHistoryApi = viewModel::viewHistory,
+        onDismissAnomalyDialog = viewModel::dismissAnomalyDialog,
         modifier = modifier
         )
 }
@@ -84,11 +88,52 @@ private fun AnomalyScreenContent(
     onStartMonitoringApi: () -> Unit,
     onStopMonitoringApi: () -> Unit,
     onViewHistoryApi: () -> Unit,
+    onDismissAnomalyDialog: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // dylan shows a dialoge box if an anomaly happens
+    if (uiState.showAnomalyDialog) {
+        AlertDialog(
+            onDismissRequest = onDismissAnomalyDialog,
+            title = {
+                Text("Anomaly Detected")
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Loud sound and movement were detected."
+                    )
+
+                    Spacer(
+                        modifier = Modifier.height(8.dp)
+                    )
+
+                    Text(
+                        text = "Sound level: ${
+                            uiState.estimatedSoundLevelDb.formatOneDecimal()
+                        } dB"
+                    )
+
+                    Text(
+                        text = "Acceleration: ${
+                            uiState.accelerationMagnitude.formatOneDecimal()
+                        } m/s²"
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = onDismissAnomalyDialog
+                ) {
+                    Text("OK")
+                }
+            }
+        )
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -122,6 +167,10 @@ private fun AnomalyScreenContent(
 
         Text(
             text = "Motion detected: ${uiState.motionDetected}"
+        )
+
+        Text(
+            text = "Anomaly detected: ${uiState.anomalyDetected}"
         )
 
         Button(
@@ -166,6 +215,54 @@ private fun AnomalyScreenContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("View History")
+        }
+
+        // dylan show history
+        if (uiState.showHistory) {
+            HorizontalDivider()
+
+            Text(
+                text = "Anomaly History",
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            if (uiState.anomalyHistory.isEmpty()) {
+                Text("No anomalies have been recorded.")
+            } else {
+                uiState.anomalyHistory.take(10).forEach { anomaly ->
+                    Text(
+                        text = buildString {
+                            append(anomaly.type)
+                            append(" — ")
+                            append(
+                                anomaly.magnitude?.let {
+                                    String.format(
+                                        Locale.US,
+                                        "%.1f dB",
+                                        it
+                                    )
+                                } ?: "Unknown magnitude"
+                            )
+                        },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    Text(
+                        text = DateFormat.getDateTimeInstance()
+                            .format(Date(anomaly.timestamp)),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    anomaly.description?.let { description ->
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
         }
 
         if (uiState.isLoading) {
@@ -295,7 +392,8 @@ private fun AnomalyScreenPreview() {
             onTestEarthquakeApi = {},
             onStartMonitoringApi = {},
             onStopMonitoringApi = {},
-            onViewHistoryApi = {}
+            onViewHistoryApi = {},
+            onDismissAnomalyDialog = {}
         )
     }
 }

@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
+// dylan anomalytime
+private var lastAnomalyTimeMillis = 0L
+
 // BananaGinger/Kyryl: ViewModel owns coroutine scope and exposes StateFlow to Compose.
 class AnomalyViewModel(
     private val repository: AnomalyRepository,
@@ -28,6 +31,7 @@ class AnomalyViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AnomalyUiState())
     val uiState: StateFlow<AnomalyUiState> = _uiState.asStateFlow()
+
 
     private var motionJob: Job? = null
     private var soundJob: Job? = null
@@ -118,6 +122,7 @@ class AnomalyViewModel(
                                 deviationFromGravity > MOTION_THRESHOLD
                         )
                     }
+                    evaluateAndRecordAnomaly()
                 }
         }
 
@@ -133,6 +138,7 @@ class AnomalyViewModel(
                                 reading.estimatedSoundLevelDb
                         )
                     }
+                    evaluateAndRecordAnomaly()
                 }
         }
     }
@@ -203,8 +209,115 @@ class AnomalyViewModel(
         }
     }
 
+    // dylan anomaly history
+    init {
+        observeAnomalyHistory()
+    }
+
+    private fun observeAnomalyHistory() {
+        viewModelScope.launch {
+            repository.observeAnomalies()
+                .catch { exception ->
+                    _uiState.update { currentState ->
+                        currentState.copy(
+                            errorMessage = exception.message
+                                ?: "Unable to load anomaly history."
+                        )
+                    }
+                }
+                .collect { anomalies ->
+                    _uiState.update { currentState ->
+                        currentState.copy(
+                            anomalyHistory = anomalies
+                        )
+                    }
+                }
+        }
+    }
+
+    // dylan calculate whether something is an anomaly
+    private fun evaluateAndRecordAnomaly() {
+        val currentState = _uiState.value
+
+        val thresholdMet =
+            currentState.estimatedSoundLevelDb > SOUND_THRESHOLD_DB &&
+                    currentState.motionDetected
+
+        _uiState.update { state ->
+            state.copy(
+                anomalyDetected = thresholdMet
+            )
+        }
+
+        if (!thresholdMet) {
+            return
+        }
+
+        val currentTime = System.currentTimeMillis()
+
+        if (
+            currentTime - lastAnomalyTimeMillis <
+            ANOMALY_COOLDOWN_MS
+        ) {
+            return
+        }
+
+        lastAnomalyTimeMillis = currentTime
+
+        _uiState.update { state ->
+            state.copy(
+                showAnomalyDialog = true,
+                statusMessage = "Anomaly detected."
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                val earthquake = repository.recordAnomaly(
+                    soundLevelDb =
+                        _uiState.value.estimatedSoundLevelDb,
+                    accelerationMagnitude =
+                        _uiState.value.accelerationMagnitude,
+                    location = DEMO_LOCATION,
+                    eventTimeMillis = currentTime
+                )
+
+                _uiState.update { state ->
+                    state.copy(
+                        statusMessage = "Anomaly detected and saved.",
+                        earthquake = earthquake,
+                        errorMessage = null
+                    )
+                }
+            } catch (exception: Exception) {
+                _uiState.update { state ->
+                    state.copy(
+                        errorMessage = exception.message
+                            ?: "Unable to save anomaly."
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissAnomalyDialog() {
+        _uiState.update { currentState ->
+            currentState.copy(
+                showAnomalyDialog = false
+            )
+        }
+    }
+
     companion object {
+
+        // dylan anomaly threshholds
         private const val MOTION_THRESHOLD = 1.5f
+        // THIS IS WHAT IS SHOULD BE
+        private const val SOUND_THRESHOLD_DB = 50.0
+
+        // ZERO FOR TESTING PURPOSE
+        //private const val SOUND_THRESHOLD_DB = 00.0
+        private const val ANOMALY_COOLDOWN_MS = 5_000L
 
         val DEMO_LOCATION = LocationSnapshot(
             latitude = 47.6101,

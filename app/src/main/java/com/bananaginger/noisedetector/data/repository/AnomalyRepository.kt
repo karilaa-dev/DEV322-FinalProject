@@ -31,8 +31,56 @@ class AnomalyRepository(
         )
     }
 
+    // dylan record anomaly
+    suspend fun recordAnomaly(
+        soundLevelDb: Double,
+        accelerationMagnitude: Float,
+        location: LocationSnapshot,
+        eventTimeMillis: Long
+    ): EarthquakeSummary? = withContext(Dispatchers.IO) {
+
+        val earthquake = runCatching {
+            earthquakeDataSource.findNearbyEarthquake(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                eventTimeMillis = eventTimeMillis,
+                maxRadiusKm = EARTHQUAKE_SEARCH_RADIUS_KM,
+                lookbackDays = EARTHQUAKE_LOOKBACK_DAYS
+            )
+        }.getOrNull()
+
+        val earthquakeMetadata = earthquake?.let {
+            "earthquakeId=${it.id};" +
+                    "place=${it.place};" +
+                    "magnitude=${it.magnitude};" +
+                    "depthKm=${it.depthKm};" +
+                    "time=${it.timeMillis}"
+        }
+
+        dao.insert(
+            AnomalyEntity(
+                timestamp = eventTimeMillis,
+                type = "sound_and_motion",
+                magnitude = soundLevelDb,
+                severity = when {
+                    soundLevelDb >= 90.0 -> 3
+                    soundLevelDb >= 82.0 -> 2
+                    else -> 1
+                },
+                description =
+                    "Sound exceeded 50 dB while movement was detected. " +
+                            "Acceleration: $accelerationMagnitude m/s²",
+                metadata = earthquakeMetadata
+            )
+        )
+
+        earthquake
+    }
+
     companion object {
         const val EARTHQUAKE_SEARCH_RADIUS_KM = 500.0
         const val EARTHQUAKE_LOOKBACK_DAYS = 30L
     }
+
+
 }
