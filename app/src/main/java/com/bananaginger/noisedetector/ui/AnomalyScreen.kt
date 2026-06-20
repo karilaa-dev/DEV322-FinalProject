@@ -30,8 +30,12 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.Slider
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+
 
 // dylan shows a dialoge box if an anomaly happens
 @Composable
@@ -74,6 +78,8 @@ fun AnomalyScreen(
         },
         onStopMonitoringApi = viewModel::stopMonitoring,
         onViewHistoryApi = viewModel::viewHistory,
+        onSoundThresholdChangedApi = viewModel::updateSoundThreshold,
+        onMotionThresholdChangedApi = viewModel::updateMotionThreshold,
         modifier = modifier
     )
 }
@@ -85,11 +91,14 @@ private fun AnomalyScreenContent(
     onStartMonitoringApi: () -> Unit,
     onStopMonitoringApi: () -> Unit,
     onViewHistoryApi: () -> Unit,
+    onSoundThresholdChangedApi: (Double) -> Unit,
+    onMotionThresholdChangedApi: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -128,6 +137,49 @@ private fun AnomalyScreenContent(
         Text(
             text = "Anomaly detected: ${uiState.anomalyDetected}"
         )
+
+        HorizontalDivider()
+
+        Text(
+            text = "Detection thresholds",
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Text(
+            text = "Sound threshold: ${
+                uiState.soundThresholdDb.formatOneDecimal()
+            } dB"
+        )
+
+        Slider(
+            value = uiState.soundThresholdDb.toFloat(),
+            onValueChange = { value ->
+                onSoundThresholdChangedApi(value.toDouble())
+            },
+            valueRange = 0f..120f,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Text(
+            text = "Motion threshold: ${
+                uiState.motionThreshold.formatOneDecimal()
+            } m/s²"
+        )
+
+        Slider(
+            value = uiState.motionThreshold,
+            onValueChange = onMotionThresholdChangedApi,
+            valueRange = 0f..8f,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Text(
+            text = "An anomaly is saved only when sound and motion are both above their thresholds."
+        )
+
+        HorizontalDivider()
+
+
 
         Button(
             onClick = onStartMonitoringApi,
@@ -300,7 +352,10 @@ private fun AnomalyScreenPreview() {
             onTestEarthquakeApi = {},
             onStartMonitoringApi = {},
             onStopMonitoringApi = {},
-            onViewHistoryApi = {}
+            onViewHistoryApi = {},
+            onSoundThresholdChangedApi = {},
+            onMotionThresholdChangedApi = {}
+
         )
     }
 }

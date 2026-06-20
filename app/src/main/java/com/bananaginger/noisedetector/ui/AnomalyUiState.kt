@@ -20,6 +20,10 @@ data class AnomalyUiState(
     val anomalyDetected: Boolean = false,
     val showAnomalyDialog: Boolean = false,
 
+    // threshholds
+    val soundThresholdDb: Double = HistoryEntry.SOUND_THRESHOLD_DB,
+    val motionThreshold: Float = HistoryEntry.MOTION_THRESHOLD,
+
     // anomaly history list
     /**
      * In-memory detection history for the current session.

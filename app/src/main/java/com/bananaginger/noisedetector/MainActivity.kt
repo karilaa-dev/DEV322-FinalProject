@@ -151,6 +151,32 @@ class MainActivity : ComponentActivity() {
                                         )
                                     } m/s²"
                                 )
+
+
+                                Spacer(
+                                    modifier = Modifier.height(8.dp)
+                                )
+
+                                Text(
+                                    text = "Sound threshold: ${
+                                        String.format(
+                                            Locale.US,
+                                            "%.1f",
+                                            uiState.soundThresholdDb
+                                        )
+                                    } dB"
+                                )
+
+                                Text(
+                                    text = "Motion threshold: ${
+                                        String.format(
+                                            Locale.US,
+                                            "%.1f",
+                                            uiState.motionThreshold
+                                        )
+                                    } m/s² above resting gravity"
+                                )
+
                             }
                         },
                         confirmButton = {
