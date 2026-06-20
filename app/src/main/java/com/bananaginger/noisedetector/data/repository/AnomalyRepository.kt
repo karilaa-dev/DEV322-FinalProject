@@ -38,6 +38,8 @@ class AnomalyRepository(
     suspend fun recordAnomaly(
         soundLevelDb: Double,
         accelerationMagnitude: Float,
+        soundThresholdDb: Double,
+        motionThreshold: Float,
         location: LocationSnapshot,
         eventTimeMillis: Long
     ): EarthquakeSummary? = withContext(Dispatchers.IO) {
@@ -58,8 +60,12 @@ class AnomalyRepository(
                     "magnitude=${it.magnitude};" +
                     "depthKm=${it.depthKm};" +
                     "time=${it.timeMillis};" +
-                    "accelerationMagnitude=$accelerationMagnitude"
-        } ?: "accelerationMagnitude=$accelerationMagnitude"
+                    "accelerationMagnitude=$accelerationMagnitude;" +
+                    "soundThresholdDb=$soundThresholdDb;" +
+                    "motionThreshold=$motionThreshold"
+        } ?: "accelerationMagnitude=$accelerationMagnitude;" +
+        "soundThresholdDb=$soundThresholdDb;" +
+        "motionThreshold=$motionThreshold"
 
         val detectedAt = Date(eventTimeMillis)
 
@@ -92,7 +98,8 @@ class AnomalyRepository(
                 magnitude = soundLevelDb,
                 severity = maxOf(soundSeverity, motionSeverity),
                 description =
-                    "Sound exceeded 50 dB while movement was detected. " +
+                    "Sound exceeded ${String.format(Locale.US, "%.1f", soundThresholdDb)} dB " +
+                            "while movement exceeded ${String.format(Locale.US, "%.1f", motionThreshold)} m/s². " +
                             "Acceleration: $accelerationMagnitude m/s²",
                 metadata = earthquakeMetadata
             )

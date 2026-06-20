@@ -145,10 +145,10 @@ class AnomalyViewModel(
         if (!motionSensorReader.isAvailable) { showError("Accelerometer is unavailable."); return }
         if (!soundSensorReader.isAvailable)  { showError("Microphone is unavailable.");    return }
 
-        _uiState.update { it.copy(
+        _uiState.update { currentState -> currentState.copy(
             isMonitoring = true,
             showHistory = false,
-            statusMessage = "Monitoring started. Listening for sound and motion.",
+            statusMessage = "Monitoring started. Listening for sound and motion above the selected thresholds.",
             errorMessage = null
         )}
 
@@ -161,7 +161,8 @@ class AnomalyViewModel(
                     val deviationFromGravity = abs(
                         reading.accelerationMagnitude - SensorManager.GRAVITY_EARTH
                     )
-                    val motionDetected = deviationFromGravity > MOTION_DISPLAY_THRESHOLD
+                    val motionDetected = deviationFromGravity > _uiState.value.motionThreshold
+
 
                     // Update UI with latest sensor values.
                     _uiState.update { it.copy(
@@ -214,6 +215,43 @@ class AnomalyViewModel(
     fun microphonePermissionDenied() {
         showError("Microphone permission is required to start monitoring.")
     }
+
+    // dylan adjustable threshold sliders
+    fun updateSoundThreshold(value: Double) {
+        val clampedValue = value.coerceIn(0.0, 120.0)
+
+        _uiState.update { currentState ->
+            currentState.copy(
+                soundThresholdDb = clampedValue,
+                statusMessage = "Sound threshold set to ${
+                    String.format(Locale.US, "%.1f", clampedValue)
+                } dB.",
+                errorMessage = null
+            )
+        }
+    }
+
+    // dylan adjustable threshold sliders
+    fun updateMotionThreshold(value: Float) {
+        val clampedValue = value.coerceIn(0.0f, 8.0f)
+        val currentAcceleration = _uiState.value.accelerationMagnitude
+        val motionDetected = abs(
+            currentAcceleration - SensorManager.GRAVITY_EARTH
+        ) > clampedValue
+
+        _uiState.update { currentState ->
+            currentState.copy(
+                motionThreshold = clampedValue,
+                motionDetected = motionDetected,
+                statusMessage = "Motion threshold set to ${
+                    String.format(Locale.US, "%.1f", clampedValue)
+                } m/s² above resting gravity.",
+                errorMessage = null
+            )
+        }
+    }
+
+
 
     /** Shows the history screen by setting the showHistory flag to true. */
     fun viewHistory() {
@@ -322,13 +360,20 @@ class AnomalyViewModel(
     // dylan calculate whether something is an anomaly
     private fun evaluateAndRecordAnomaly() {
         val currentState = _uiState.value
+        val motionDeviation = abs(
+            currentState.accelerationMagnitude - SensorManager.GRAVITY_EARTH
+        )
+        val motionThresholdMet =
+            motionDeviation > currentState.motionThreshold
 
         val thresholdMet =
-            currentState.estimatedSoundLevelDb > SOUND_THRESHOLD_DB &&
-                    currentState.motionDetected
+            currentState.estimatedSoundLevelDb > currentState.soundThresholdDb &&
+                    motionThresholdMet
+
 
         _uiState.update { state ->
             state.copy(
+                motionDetected = motionThresholdMet,
                 anomalyDetected = thresholdMet
             )
         }
@@ -341,7 +386,7 @@ class AnomalyViewModel(
             type = HistoryEntry.TYPE_SOUND_AND_MOTION,
             soundLevelDb = currentState.estimatedSoundLevelDb,
             accelerationMagnitude = currentState.accelerationMagnitude,
-            motionDetected = currentState.motionDetected
+            motionDetected = motionThresholdMet
         ) ?: return
 
         _uiState.update { state ->
@@ -357,6 +402,8 @@ class AnomalyViewModel(
                     soundLevelDb = recordedEntry.soundLevelDb ?: 0.0,
                     accelerationMagnitude =
                         recordedEntry.accelerationMagnitude ?: 0.0f,
+                    soundThresholdDb = currentState.soundThresholdDb,
+                    motionThreshold = currentState.motionThreshold,
                     location = DEMO_LOCATION,
                     eventTimeMillis = recordedEntry.timestamp
                 )

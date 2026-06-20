@@ -9,9 +9,9 @@ package com.bananaginger.noisedetector.history
  *
  * Each entry is also pushed to the remote server via AnomalyServerSync.
  *
- * Recording thresholds (deliberately low so history is never empty):
- *  - SOUND  : estimatedSoundLevelDb  > SOUND_THRESHOLD_DB  (30.0 dB)
- *  - MOTION : deviationFromGravity   > MOTION_THRESHOLD    (0.5 m/s²)
+ * Recording thresholds are adjustable from the main monitoring screen.
+ *  - SOUND  : estimatedSoundLevelDb  > selected sound threshold
+ *  - MOTION : deviationFromGravity   > selected motion threshold
  *  - EARTHQUAKE : always when the API returns a result
  *
  * Debounce: at most one entry per type every MIN_INTERVAL_MS (5 000 ms).
@@ -77,14 +77,14 @@ data class HistoryEntry(
         const val TYPE_MOTION     = "MOTION"
         const val TYPE_EARTHQUAKE = "EARTHQUAKE"
 
-        // dylan combined sound and motion
+        // dylan combined anomaly type used by the popup detection feature
         const val TYPE_SOUND_AND_MOTION = "SOUND_AND_MOTION"
 
-        /** Recording threshold for sound (deliberately low). */
-        const val SOUND_THRESHOLD_DB = 30.0
+        /** Default recording threshold for sound. The user can adjust this with the slider. */
+        const val SOUND_THRESHOLD_DB = 50.0
 
-        /** Recording threshold for motion deviation from gravity (deliberately low). */
-        const val MOTION_THRESHOLD = 0.5f
+        /** Default recording threshold for motion deviation from gravity. The user can adjust this with the slider. */
+        const val MOTION_THRESHOLD = 1.5f
 
         /** Minimum ms between two consecutive records of the same type (debounce). */
         const val MIN_INTERVAL_MS = 5_000L
