@@ -24,4 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Noise and Motion Anomaly Detector"
 include(":app")
- 
+include(":sasl-stubs")

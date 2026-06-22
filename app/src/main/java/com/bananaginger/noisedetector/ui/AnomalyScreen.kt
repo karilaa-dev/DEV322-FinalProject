@@ -78,6 +78,8 @@ fun AnomalyScreen(
         },
         onStopMonitoringApi = viewModel::stopMonitoring,
         onViewHistoryApi = viewModel::viewHistory,
+        onViewRemoteDataApi = viewModel::viewRemoteData,
+        onChangeLocationApi = viewModel::changeLookupLocation,
         onSoundThresholdChangedApi = viewModel::updateSoundThreshold,
         onMotionThresholdChangedApi = viewModel::updateMotionThreshold,
         modifier = modifier
@@ -91,6 +93,8 @@ private fun AnomalyScreenContent(
     onStartMonitoringApi: () -> Unit,
     onStopMonitoringApi: () -> Unit,
     onViewHistoryApi: () -> Unit,
+    onViewRemoteDataApi: () -> Unit,
+    onChangeLocationApi: () -> Unit,
     onSoundThresholdChangedApi: (Double) -> Unit,
     onMotionThresholdChangedApi: (Float) -> Unit,
     modifier: Modifier = Modifier
@@ -111,6 +115,18 @@ private fun AnomalyScreenContent(
             text = "Sensor monitoring",
             style = MaterialTheme.typography.titleMedium
         )
+
+        Text(
+            text = "Lookup location: ${uiState.locationSourceLabel ?: "not set"}"
+        )
+
+        Button(
+            onClick = onChangeLocationApi,
+            enabled = !uiState.isMonitoring,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Change Location")
+        }
 
         Text(
             text = "Monitoring: ${
@@ -223,6 +239,13 @@ private fun AnomalyScreenContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("View History")
+        }
+
+        Button(
+            onClick = onViewRemoteDataApi,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Remote Data")
         }
 
         if (uiState.isLoading) {
@@ -353,6 +376,8 @@ private fun AnomalyScreenPreview() {
             onStartMonitoringApi = {},
             onStopMonitoringApi = {},
             onViewHistoryApi = {},
+            onViewRemoteDataApi = {},
+            onChangeLocationApi = {},
             onSoundThresholdChangedApi = {},
             onMotionThresholdChangedApi = {}
 

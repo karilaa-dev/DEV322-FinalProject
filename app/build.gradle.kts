@@ -1,3 +1,20 @@
+import java.util.Properties
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun localProperty(name: String, fallback: String = ""): String {
+    return localProperties.getProperty(name, fallback)
+}
+
+fun quoted(value: String): String {
+    return "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -20,6 +37,30 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] =
+            localProperty("GOOGLE_MAPS_API_KEY")
+
+        buildConfigField(
+            "String",
+            "ATLAS_DATABASE",
+            quoted(localProperty("ATLAS_DATABASE", "bananaginger"))
+        )
+        buildConfigField(
+            "String",
+            "ATLAS_ANOMALY_COLLECTION",
+            quoted(localProperty("ATLAS_ANOMALY_COLLECTION", "anomalies"))
+        )
+        buildConfigField(
+            "String",
+            "ATLAS_EARTHQUAKE_COLLECTION",
+            quoted(localProperty("ATLAS_EARTHQUAKE_COLLECTION", "earthquakes"))
+        )
+        buildConfigField(
+            "String",
+            "MONGODB_CONNECTION_STRING",
+            quoted(localProperty("MONGODB_CONNECTION_STRING"))
+        )
     }
 
     buildTypes {
@@ -37,6 +78,12 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+    packaging {
+        resources {
+            excludes += "META-INF/native-image/**"
+        }
     }
 }
 
@@ -62,9 +109,14 @@ dependencies {
 
     // Other libraries
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+    implementation(project(":sasl-stubs"))
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("org.mongodb:mongodb-driver-sync:5.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.google.maps.android:maps-compose:6.12.0")
 
     // Room (use version catalog)
     implementation(libs.androidx.room.runtime)

@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,6 +32,10 @@ import androidx.compose.ui.unit.dp
 fun AnomalyHistoryScreen(
     entries: List<HistoryEntry>,
     onBack: () -> Unit,
+    onUploadHistory: () -> Unit,
+    onViewRemoteData: () -> Unit,
+    isUploadingHistory: Boolean,
+    uploadStatusMessage: String,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -47,7 +52,7 @@ fun AnomalyHistoryScreen(
 
         // ---- Entry count subtitle ----
         Text(
-            text = "${entries.size} event(s) recorded this session",
+            text = "${entries.size} saved event(s)",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -81,14 +86,52 @@ fun AnomalyHistoryScreen(
             }
         }
 
-        // ---- Back button — always visible at the bottom ----
+        if (isUploadingHistory) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                Text("Uploading history...")
+            }
+        }
+
+        if (uploadStatusMessage.isNotBlank()) {
+            Text(
+                text = uploadStatusMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = onBack,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+            ) {
+                Text("Back")
+            }
+
+            Button(
+                onClick = onUploadHistory,
+                enabled = !isUploadingHistory,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+            ) {
+                Text("Upload")
+            }
+        }
+
         Button(
-            onClick = onBack,
+            onClick = onViewRemoteData,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
         ) {
-            Text("Back")
+            Text("Remote Data")
         }
     }
 }
@@ -183,6 +226,19 @@ private fun HistoryEntryCard(entry: HistoryEntry) {
                     )
                 }
             }
+
+            Text(
+                text = "Remote: ${entry.remoteSyncStatus}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            entry.remoteError?.let { error ->
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
     }
 }
@@ -225,7 +281,11 @@ fun AnomalyHistoryScreenPreview() {
                     description = "Motion detected 12.5 m/s\u00B2"
                 )
             ),
-            onBack = {}
+            onBack = {},
+            onUploadHistory = {},
+            onViewRemoteData = {},
+            isUploadingHistory = false,
+            uploadStatusMessage = ""
         )
     }
 }

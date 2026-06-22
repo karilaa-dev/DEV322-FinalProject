@@ -7,7 +7,7 @@ package com.bananaginger.noisedetector.history
  *  - Stored in ViewModel memory: survives rotation and going to background.
  *  - Cleared when the process is killed (app fully closed).
  *
- * Each entry is also pushed to the remote server via AnomalyServerSync.
+ * Entries can be uploaded later from the History screen.
  *
  * Recording thresholds are adjustable from the main monitoring screen.
  *  - SOUND  : estimatedSoundLevelDb  > selected sound threshold
@@ -70,7 +70,11 @@ data class HistoryEntry(
     val longitude: Double? = null,
 
     /** Earthquake depth in km, or null. */
-    val depthKm: Double? = null
+    val depthKm: Double? = null,
+
+    val remoteSyncStatus: String = "PENDING",
+    val remoteUploadedAt: Long? = null,
+    val remoteError: String? = null
 ) {
     companion object {
         const val TYPE_SOUND      = "SOUND"
