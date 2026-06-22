@@ -67,7 +67,6 @@ class AnomalyViewModel(
                 _uiState.update {
                     it.copy(
                         isResolvingLocation = false,
-                        locationChoiceRequired = true,
                         statusMessage = "Choose a lookup location before monitoring.",
                         errorMessage = "Location permission or current location is unavailable."
                     )
@@ -80,8 +79,6 @@ class AnomalyViewModel(
                     selectedLocation = location,
                     locationSource = LocationSelectionSource.PHONE,
                     locationSourceLabel = LocationSelectionSource.PHONE.label,
-                    locationChoiceRequired = false,
-                    showMapPicker = false,
                     isResolvingLocation = false,
                     statusMessage = "Earthquake lookup location is set.",
                     errorMessage = null
@@ -95,8 +92,6 @@ class AnomalyViewModel(
         _uiState.update {
             it.copy(
                 isResolvingLocation = false,
-                locationChoiceRequired = true,
-                showMapPicker = false,
                 statusMessage = "Choose a lookup location before monitoring.",
                 errorMessage = "Location permission was denied. Pick a location on the map or allow location access."
             )
@@ -107,32 +102,7 @@ class AnomalyViewModel(
         stopMonitoring()
         _uiState.update {
             it.copy(
-                locationChoiceRequired = true,
-                showMapPicker = false,
-                showHistory = false,
-                showRemoteData = false,
                 statusMessage = "Choose a lookup location."
-            )
-        }
-    }
-
-    fun chooseLocationOnMap() {
-        _uiState.update {
-            it.copy(
-                showMapPicker = true,
-                locationChoiceRequired = false,
-                statusMessage = "Pick a lookup location on the map.",
-                errorMessage = null
-            )
-        }
-    }
-
-    fun cancelMapLocationChoice() {
-        _uiState.update {
-            it.copy(
-                showMapPicker = false,
-                locationChoiceRequired = it.selectedLocation == null,
-                statusMessage = "Choose a lookup location before monitoring."
             )
         }
     }
@@ -143,8 +113,6 @@ class AnomalyViewModel(
                 selectedLocation = location,
                 locationSource = LocationSelectionSource.MAP,
                 locationSourceLabel = LocationSelectionSource.MAP.label,
-                locationChoiceRequired = false,
-                showMapPicker = false,
                 statusMessage = "Manual earthquake lookup location is set.",
                 errorMessage = null
             )
@@ -174,7 +142,6 @@ class AnomalyViewModel(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            locationChoiceRequired = true,
                             statusMessage = "Choose a lookup location before testing earthquakes.",
                             errorMessage = null
                         )
@@ -230,8 +197,6 @@ class AnomalyViewModel(
         _uiState.update {
             it.copy(
                 isMonitoring = true,
-                showHistory = false,
-                showRemoteData = false,
                 statusMessage = "Monitoring started.",
                 errorMessage = null
             )
@@ -323,27 +288,6 @@ class AnomalyViewModel(
         }
     }
 
-    fun viewHistory() {
-        _uiState.update {
-            it.copy(
-                showHistory = true,
-                showRemoteData = false,
-                statusMessage = "Showing anomaly history.",
-                errorMessage = null
-            )
-        }
-    }
-
-    fun hideHistory() {
-        _uiState.update {
-            it.copy(
-                showHistory = false,
-                statusMessage = "",
-                errorMessage = null
-            )
-        }
-    }
-
     fun uploadHistory() {
         viewModelScope.launch {
             _uiState.update {
@@ -362,24 +306,6 @@ class AnomalyViewModel(
                     errorMessage = null
                 )
             }
-        }
-    }
-
-    fun viewRemoteData() {
-        _uiState.update {
-            it.copy(
-                showRemoteData = true,
-                showHistory = false,
-                statusMessage = "Showing remote data.",
-                remoteErrorMessage = null
-            )
-        }
-        loadRemoteData()
-    }
-
-    fun hideRemoteData() {
-        _uiState.update {
-            it.copy(showRemoteData = false, remoteErrorMessage = null)
         }
     }
 
@@ -436,7 +362,6 @@ class AnomalyViewModel(
                 selectedLocation = selection.location,
                 locationSource = selection.source,
                 locationSourceLabel = selection.source.label,
-                locationChoiceRequired = false,
                 statusMessage = "Using saved earthquake lookup location.",
                 errorMessage = null
             )
@@ -459,7 +384,7 @@ class AnomalyViewModel(
                 selectedLocation = currentLocation,
                 locationSource = LocationSelectionSource.PHONE,
                 locationSourceLabel = LocationSelectionSource.PHONE.label,
-                locationChoiceRequired = false
+                isResolvingLocation = false
             )
         }
         return currentLocation

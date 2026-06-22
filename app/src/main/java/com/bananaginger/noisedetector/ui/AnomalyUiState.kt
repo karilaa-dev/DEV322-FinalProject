@@ -17,9 +17,6 @@ data class AnomalyUiState(
     val errorMessage: String? = null,
 
     val isMonitoring: Boolean = false,
-    val showHistory: Boolean = false,
-    val showRemoteData: Boolean = false,
-    val showMapPicker: Boolean = false,
 
     val estimatedSoundLevelDb: Double = 0.0,
     val accelerationMagnitude: Float = 0.0f,
@@ -35,7 +32,6 @@ data class AnomalyUiState(
     val selectedLocation: LocationSnapshot? = null,
     val locationSource: LocationSelectionSource? = null,
     val locationSourceLabel: String? = null,
-    val locationChoiceRequired: Boolean = true,
     val isResolvingLocation: Boolean = false,
 
     val isUploadingHistory: Boolean = false,

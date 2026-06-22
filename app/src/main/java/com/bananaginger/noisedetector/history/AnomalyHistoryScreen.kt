@@ -25,15 +25,12 @@ import androidx.compose.ui.unit.dp
  * Room-backed SOUND_AND_MOTION entries are restored into the list by the merged ViewModel.
  *
  * @param entries  List of recorded anomaly events, newest first.
- * @param onBack   Callback invoked when the user taps the Back button.
  * @param modifier Compose modifier forwarded from the parent.
  */
 @Composable
 fun AnomalyHistoryScreen(
     entries: List<HistoryEntry>,
-    onBack: () -> Unit,
     onUploadHistory: () -> Unit,
-    onViewRemoteData: () -> Unit,
     isUploadingHistory: Boolean,
     uploadStatusMessage: String,
     modifier: Modifier = Modifier
@@ -46,7 +43,7 @@ fun AnomalyHistoryScreen(
     ) {
         // ---- Screen title ----
         Text(
-            text = "Anomaly History",
+            text = "Local History",
             style = MaterialTheme.typography.headlineSmall
         )
 
@@ -101,37 +98,13 @@ fun AnomalyHistoryScreen(
             )
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = onBack,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-            ) {
-                Text("Back")
-            }
-
-            Button(
-                onClick = onUploadHistory,
-                enabled = !isUploadingHistory,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-            ) {
-                Text("Upload")
-            }
-        }
-
         Button(
-            onClick = onViewRemoteData,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
+            onClick = onUploadHistory,
+            enabled = !isUploadingHistory,
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(vertical = 12.dp)
         ) {
-            Text("Remote Data")
+            Text("Upload")
         }
     }
 }
@@ -281,9 +254,7 @@ fun AnomalyHistoryScreenPreview() {
                     description = "Motion detected 12.5 m/s\u00B2"
                 )
             ),
-            onBack = {},
             onUploadHistory = {},
-            onViewRemoteData = {},
             isUploadingHistory = false,
             uploadStatusMessage = ""
         )

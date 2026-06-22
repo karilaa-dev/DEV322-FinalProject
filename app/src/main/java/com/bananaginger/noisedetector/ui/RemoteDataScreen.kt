@@ -35,7 +35,6 @@ fun RemoteDataScreen(
     onKindChanged: (RemoteDataKind) -> Unit,
     onFilterChanged: (RemoteDataFilter) -> Unit,
     onRefresh: () -> Unit,
-    onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -45,7 +44,7 @@ fun RemoteDataScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = "Remote Data",
+            text = "Remote History",
             style = MaterialTheme.typography.headlineSmall
         )
 
@@ -100,35 +99,51 @@ fun RemoteDataScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (uiState.remoteDataKind == RemoteDataKind.ANOMALIES) {
+                if (!uiState.isLoadingRemoteData &&
+                    uiState.remoteErrorMessage == null &&
+                    uiState.remoteAnomalies.isEmpty()
+                ) {
+                    item {
+                        EmptyRemoteState("No uploaded events found for this filter.")
+                    }
+                }
+
                 items(uiState.remoteAnomalies) { anomaly ->
                     RemoteAnomalyCard(anomaly)
                 }
             } else {
+                if (!uiState.isLoadingRemoteData &&
+                    uiState.remoteErrorMessage == null &&
+                    uiState.remoteEarthquakes.isEmpty()
+                ) {
+                    item {
+                        EmptyRemoteState("No remote earthquakes found for this filter.")
+                    }
+                }
+
                 items(uiState.remoteEarthquakes) { earthquake ->
                     RemoteEarthquakeCard(earthquake)
                 }
             }
         }
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Button(
+            onClick = onRefresh,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Button(
-                onClick = onBack,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Back")
-            }
-
-            Button(
-                onClick = onRefresh,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Refresh")
-            }
+            Text("Refresh")
         }
     }
+}
+
+@Composable
+private fun EmptyRemoteState(message: String) {
+    Text(
+        text = message,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 16.dp)
+    )
 }
 
 @Composable

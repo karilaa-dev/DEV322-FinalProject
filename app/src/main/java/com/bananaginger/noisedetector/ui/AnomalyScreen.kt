@@ -1,5 +1,7 @@
 package com.bananaginger.noisedetector.ui
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,96 +11,39 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.collectAsState
 import com.bananaginger.noisedetector.data.model.EarthquakeSummary
+import com.bananaginger.noisedetector.data.model.LocationSnapshot
+import com.bananaginger.noisedetector.data.location.LocationSelectionSource
 import com.bananaginger.noisedetector.ui.theme.NoiseAndMotionAnomalyDetectorTheme
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.Slider
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 
-
-// dylan shows a dialoge box if an anomaly happens
 @Composable
 fun AnomalyScreen(
-    viewModel: AnomalyViewModel,
-    modifier: Modifier = Modifier
-) {
-    val uiState by viewModel.uiState.collectAsState()
-
-    val context = LocalContext.current
-
-    val microphonePermissionLauncher =
-        rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.RequestPermission()
-        ) { isGranted ->
-            if (isGranted) {
-                viewModel.startMonitoring()
-            } else {
-                viewModel.microphonePermissionDenied()
-            }
-        }
-
-    AnomalyScreenContent(
-        uiState = uiState,
-        onTestEarthquakeApi = viewModel::testEarthquakeApi,
-        onStartMonitoringApi = {
-            val permissionGranted =
-                ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.RECORD_AUDIO
-                ) == PackageManager.PERMISSION_GRANTED
-
-            if (permissionGranted) {
-                viewModel.startMonitoring()
-            } else {
-                microphonePermissionLauncher.launch(
-                    Manifest.permission.RECORD_AUDIO
-                )
-            }
-        },
-        onStopMonitoringApi = viewModel::stopMonitoring,
-        onViewHistoryApi = viewModel::viewHistory,
-        onViewRemoteDataApi = viewModel::viewRemoteData,
-        onChangeLocationApi = viewModel::changeLookupLocation,
-        onSoundThresholdChangedApi = viewModel::updateSoundThreshold,
-        onMotionThresholdChangedApi = viewModel::updateMotionThreshold,
-        modifier = modifier
-    )
-}
-
-@Composable
-private fun AnomalyScreenContent(
     uiState: AnomalyUiState,
     onTestEarthquakeApi: () -> Unit,
-    onStartMonitoringApi: () -> Unit,
-    onStopMonitoringApi: () -> Unit,
-    onViewHistoryApi: () -> Unit,
-    onViewRemoteDataApi: () -> Unit,
-    onChangeLocationApi: () -> Unit,
-    onSoundThresholdChangedApi: (Double) -> Unit,
-    onMotionThresholdChangedApi: (Float) -> Unit,
+    onStartMonitoring: () -> Unit,
+    onStopMonitoring: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val hasLookupLocation = uiState.selectedLocation != null
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -107,7 +52,7 @@ private fun AnomalyScreenContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = "Noise and Motion Anomaly Detector",
+            text = "Anomalies",
             style = MaterialTheme.typography.headlineSmall
         )
 
@@ -117,16 +62,35 @@ private fun AnomalyScreenContent(
         )
 
         Text(
-            text = "Lookup location: ${uiState.locationSourceLabel ?: "not set"}"
+            text = "Lookup location: ${uiState.locationSourceLabel ?: "not set"}",
+            color = if (hasLookupLocation) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.error
+            }
         )
 
-        Button(
-            onClick = onChangeLocationApi,
-            enabled = !uiState.isMonitoring,
+        if (!hasLookupLocation) {
+            Text(
+                text = "Set a lookup location in Settings before monitoring or testing earthquakes.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        OutlinedButton(
+            onClick = onOpenSettings,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Change Location")
+            Icon(
+                imageVector = Icons.Filled.Settings,
+                contentDescription = null
+            )
+            Spacer(modifier = Modifier.size(8.dp))
+            Text("Settings")
         }
+
+        HorizontalDivider()
 
         Text(
             text = "Monitoring: ${
@@ -154,63 +118,25 @@ private fun AnomalyScreenContent(
             text = "Anomaly detected: ${uiState.anomalyDetected}"
         )
 
-        HorizontalDivider()
-
-        Text(
-            text = "Detection thresholds",
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        Text(
-            text = "Sound threshold: ${
-                uiState.soundThresholdDb.formatOneDecimal()
-            } dB"
-        )
-
-        Slider(
-            value = uiState.soundThresholdDb.toFloat(),
-            onValueChange = { value ->
-                onSoundThresholdChangedApi(value.toDouble())
-            },
-            valueRange = 0f..120f,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Text(
-            text = "Motion threshold: ${
-                uiState.motionThreshold.formatOneDecimal()
-            } m/s²"
-        )
-
-        Slider(
-            value = uiState.motionThreshold,
-            onValueChange = onMotionThresholdChangedApi,
-            valueRange = 0f..8f,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Text(
-            text = "An anomaly is saved only when sound and motion are both above their thresholds."
-        )
-
-        HorizontalDivider()
-
-
-
-        Button(
-            onClick = onStartMonitoringApi,
-            enabled = !uiState.isMonitoring,
-            modifier = Modifier.fillMaxWidth()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Start Monitoring")
-        }
+            Button(
+                onClick = onStartMonitoring,
+                enabled = !uiState.isMonitoring && hasLookupLocation,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Start")
+            }
 
-        Button(
-            onClick = onStopMonitoringApi,
-            enabled = uiState.isMonitoring,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Stop Monitoring")
+            Button(
+                onClick = onStopMonitoring,
+                enabled = uiState.isMonitoring,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Stop")
+            }
         }
 
         HorizontalDivider()
@@ -222,7 +148,7 @@ private fun AnomalyScreenContent(
 
         Button(
             onClick = onTestEarthquakeApi,
-            enabled = !uiState.isLoading,
+            enabled = !uiState.isLoading && hasLookupLocation,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
@@ -232,20 +158,6 @@ private fun AnomalyScreenContent(
                     "Test Earthquake API"
                 }
             )
-        }
-
-        Button(
-            onClick = onViewHistoryApi,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("View History")
-        }
-
-        Button(
-            onClick = onViewRemoteDataApi,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Remote Data")
         }
 
         if (uiState.isLoading) {
@@ -261,10 +173,12 @@ private fun AnomalyScreenContent(
             }
         }
 
-        Text(
-            text = uiState.statusMessage,
-            style = MaterialTheme.typography.bodyMedium
-        )
+        if (uiState.statusMessage.isNotBlank()) {
+            Text(
+                text = uiState.statusMessage,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
 
         uiState.errorMessage?.let { error ->
             Text(
@@ -360,8 +274,11 @@ private fun Double?.formatNullable(): String {
 @Composable
 private fun AnomalyScreenPreview() {
     NoiseAndMotionAnomalyDetectorTheme {
-        AnomalyScreenContent(
+        AnomalyScreen(
             uiState = AnomalyUiState(
+                selectedLocation = LocationSnapshot(47.6101, -122.2015),
+                locationSource = LocationSelectionSource.MAP,
+                locationSourceLabel = LocationSelectionSource.MAP.label,
                 earthquake = EarthquakeSummary(
                     id = "uw123456",
                     place = "10 km NW of Seattle",
@@ -373,14 +290,9 @@ private fun AnomalyScreenPreview() {
                 )
             ),
             onTestEarthquakeApi = {},
-            onStartMonitoringApi = {},
-            onStopMonitoringApi = {},
-            onViewHistoryApi = {},
-            onViewRemoteDataApi = {},
-            onChangeLocationApi = {},
-            onSoundThresholdChangedApi = {},
-            onMotionThresholdChangedApi = {}
-
+            onStartMonitoring = {},
+            onStopMonitoring = {},
+            onOpenSettings = {}
         )
     }
 }
