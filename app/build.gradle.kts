@@ -70,4 +70,10 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    // Navigation Compose — enables NavHost and bottom nav bar between screens
+    implementation(libs.androidx.navigation.compose)
+
+    // Material Icons Extended — provides Home, Settings, History, Api icons
+    implementation(libs.androidx.compose.material.icons.extended)
 }

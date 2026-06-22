@@ -1,71 +1,64 @@
 package com.bananaginger.noisedetector
 
-/**
- * MainActivity — entry point Activity for the app.
- *
- * Responsibilities:
- * - Apply the app theme
- * - Set the root Compose content
- * - Wire the anomaly Repository/ViewModel for the earthquake API integration
- */
+// ---------------------------------------------------------------------------
+// MainActivity.kt
+//
+// Entry point of the application.
+//
+// Responsibilities (kept intentionally minimal):
+//   1. Create the Room database and AnomalyRepository (data layer).
+//   2. Create the sensor reader instances (hardware access).
+//   3. Create AnomalyViewModel via the factory (business logic).
+//   4. Hand everything to AppNavHost which owns all screen navigation.
+//
+// The old manual if/else navigation and the AlertDialog have been moved:
+//   • Screen routing  → AppNavigation.kt  (NavHost + bottom bar)
+//   • Anomaly dialog  → HomeScreen.kt     (shown on top of the monitor screen)
+// ---------------------------------------------------------------------------
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.bananaginger.noisedetector.data.AppDatabase
 import com.bananaginger.noisedetector.data.remote.EarthquakeRemoteDataSource
 import com.bananaginger.noisedetector.data.remote.RetrofitProvider
 import com.bananaginger.noisedetector.data.repository.AnomalyRepository
-import com.bananaginger.noisedetector.history.AnomalyHistoryScreen
-import com.bananaginger.noisedetector.ui.AnomalyScreen
-import com.bananaginger.noisedetector.ui.theme.NoiseAndMotionAnomalyDetectorTheme
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
 import com.bananaginger.noisedetector.data.sensor.AndroidMotionSensorReader
 import com.bananaginger.noisedetector.data.sensor.AndroidSoundSensorReader
 import com.bananaginger.noisedetector.data.sensor.MotionSensorReader
 import com.bananaginger.noisedetector.data.sensor.SoundSensorReader
 import com.bananaginger.noisedetector.ui.AnomalyViewModel
 import com.bananaginger.noisedetector.ui.AnomalyViewModelFactory
+import com.bananaginger.noisedetector.ui.navigation.AppNavHost
+import com.bananaginger.noisedetector.ui.theme.NoiseAndMotionAnomalyDetectorTheme
 import java.util.Locale
 
-
 class MainActivity : ComponentActivity() {
+
+    // ---- Data layer --------------------------------------------------------
+    // AppDatabase is a Room singleton.  We use `by lazy` so it is only
+    // created the first time it is accessed, not at Activity creation time.
     private val database: AppDatabase by lazy {
         AppDatabase.getInstance(applicationContext)
     }
 
     private val repository: AnomalyRepository by lazy {
-        val remoteDataSource =
-            EarthquakeRemoteDataSource(
-                RetrofitProvider.earthquakeApi
-            )
-
         AnomalyRepository(
             database.anomalyDao(),
-            remoteDataSource
+            EarthquakeRemoteDataSource(RetrofitProvider.earthquakeApi)
         )
     }
 
+    // ---- Sensor readers ----------------------------------------------------
+    // These wrap the Android hardware APIs so the ViewModel never touches
+    // Android sensor classes directly (easier to test with fakes).
     private val motionSensorReader: MotionSensorReader by lazy {
         AndroidMotionSensorReader(applicationContext)
     }
@@ -74,6 +67,9 @@ class MainActivity : ComponentActivity() {
         AndroidSoundSensorReader(applicationContext)
     }
 
+    // ---- ViewModel ---------------------------------------------------------
+    // `by viewModels` keeps the ViewModel alive across screen rotations.
+    // AnomalyViewModelFactory injects the dependencies listed above.
     private val anomalyViewModel: AnomalyViewModel by viewModels {
         AnomalyViewModelFactory(
             repository = repository,
@@ -82,107 +78,39 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Enable edge-to-edge rendering so content may draw behind system bars.
+
+        // Draw content edge-to-edge so the app looks correct on modern devices.
         enableEdgeToEdge()
-        // If started with intent extra `showHistory=true`, open History for testing.
-        if (intent?.getBooleanExtra("showHistory", false) == true) {
-            anomalyViewModel.viewHistory()
-        }
-        // Set the Compose UI content and apply the app theme.
+
         setContent {
             NoiseAndMotionAnomalyDetectorTheme {
+
+                // AppNavHost owns the Scaffold, the bottom navigation bar, and
+                // all four screen composables.  This Activity only needs to
+                // provide the shared ViewModel.
+                AppNavHost(viewModel = anomalyViewModel)
+
+                // ---- Anomaly alert dialog ----------------------------------
+                // Shown on top of whatever screen is currently visible whenever
+                // the ViewModel detects both thresholds are crossed at once.
                 val uiState by anomalyViewModel.uiState.collectAsState()
-
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    // dylan show history
-                    if (uiState.showHistory) {
-                        // Show the history screen, passing the in-memory entry list.
-                        // onBack calls hideHistory() which sets showHistory = false.
-                        AnomalyHistoryScreen(
-                            entries = uiState.historyEntries,
-                            onBack = { anomalyViewModel.hideHistory() },
-                            modifier = Modifier.padding(innerPadding)
-                        )
-                    } else {
-                        AnomalyScreen(
-                            viewModel = anomalyViewModel,
-                            modifier = Modifier.padding(innerPadding)
-                        )
-                    }
-                }
-
-                // dylan shows a dialoge box if an anomaly happens
                 if (uiState.showAnomalyDialog) {
                     AlertDialog(
                         onDismissRequest = anomalyViewModel::dismissAnomalyDialog,
-                        title = {
-                            Text("Anomaly Detected")
-                        },
+                        title = { Text("Anomaly Detected") },
                         text = {
-                            Column {
-                                Text(
-                                    text = "Loud sound and movement were detected."
-                                )
-
-                                Spacer(
-                                    modifier = Modifier.height(8.dp)
-                                )
-
-                                Text(
-                                    text = "Sound level: ${
-                                        String.format(
-                                            Locale.US,
-                                            "%.1f",
-                                            uiState.estimatedSoundLevelDb
-                                        )
-                                    } dB"
-                                )
-
-                                Text(
-                                    text = "Acceleration: ${
-                                        String.format(
-                                            Locale.US,
-                                            "%.1f",
-                                            uiState.accelerationMagnitude
-                                        )
-                                    } m/s²"
-                                )
-
-
-                                Spacer(
-                                    modifier = Modifier.height(8.dp)
-                                )
-
-                                Text(
-                                    text = "Sound threshold: ${
-                                        String.format(
-                                            Locale.US,
-                                            "%.1f",
-                                            uiState.soundThresholdDb
-                                        )
-                                    } dB"
-                                )
-
-                                Text(
-                                    text = "Motion threshold: ${
-                                        String.format(
-                                            Locale.US,
-                                            "%.1f",
-                                            uiState.motionThreshold
-                                        )
-                                    } m/s² above resting gravity"
-                                )
-
-                            }
+                            Text(
+                                text = "Sound: ${
+                                    String.format(Locale.US, "%.1f", uiState.estimatedSoundLevelDb)
+                                } dB  ·  Accel: ${
+                                    String.format(Locale.US, "%.1f", uiState.accelerationMagnitude)
+                                } m/s²\n\nBoth thresholds exceeded at the same time."
+                            )
                         },
                         confirmButton = {
-                            Button(
-                                onClick = anomalyViewModel::dismissAnomalyDialog
-                            ) {
+                            Button(onClick = anomalyViewModel::dismissAnomalyDialog) {
                                 Text("OK")
                             }
                         }

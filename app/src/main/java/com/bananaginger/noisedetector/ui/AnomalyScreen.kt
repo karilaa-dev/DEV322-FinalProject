@@ -38,6 +38,21 @@ import androidx.compose.foundation.verticalScroll
 
 
 // dylan shows a dialoge box if an anomaly happens
+/**
+ * AnomalyScreen — legacy single-page screen.
+ *
+ * @deprecated This composable is no longer used by MainActivity.
+ * It has been replaced by the four-tab navigation introduced in
+ * the feature/bottom-navigation branch:
+ *   - HomeScreen     (monitoring controls + live readings)
+ *   - SettingsScreen (threshold sliders)
+ *   - HistoryScreen  (anomaly history list)
+ *   - EarthquakeApiScreen (API test)
+ *
+ * Kept here so that the git history shows the original implementation.
+ * Safe to delete once the new navigation is merged and accepted.
+ */
+@Deprecated("Replaced by HomeScreen, SettingsScreen, HistoryScreen, EarthquakeApiScreen")
 @Composable
 fun AnomalyScreen(
     viewModel: AnomalyViewModel,
