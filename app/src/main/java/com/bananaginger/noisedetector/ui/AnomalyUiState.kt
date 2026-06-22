@@ -2,6 +2,7 @@ package com.bananaginger.noisedetector.ui
 
 import com.bananaginger.noisedetector.data.model.EarthquakeSummary
 import com.bananaginger.noisedetector.data.model.LocationSnapshot
+import com.bananaginger.noisedetector.data.location.LocationSelectionSource
 import com.bananaginger.noisedetector.data.remote.RemoteAnomalyDocument
 import com.bananaginger.noisedetector.data.remote.RemoteDataFilter
 import com.bananaginger.noisedetector.data.remote.RemoteDataKind
@@ -32,6 +33,7 @@ data class AnomalyUiState(
     val motionThreshold: Float = HistoryEntry.MOTION_THRESHOLD,
 
     val selectedLocation: LocationSnapshot? = null,
+    val locationSource: LocationSelectionSource? = null,
     val locationSourceLabel: String? = null,
     val locationChoiceRequired: Boolean = true,
     val isResolvingLocation: Boolean = false,

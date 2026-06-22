@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.bananaginger.noisedetector.data.AnomalyEntity
 import com.bananaginger.noisedetector.data.AnomalyWithEarthquake
 import com.bananaginger.noisedetector.data.location.LocationProvider
+import com.bananaginger.noisedetector.data.location.LocationSelectionSource
+import com.bananaginger.noisedetector.data.location.LocationSelectionStore
 import com.bananaginger.noisedetector.data.model.EarthquakeSummary
 import com.bananaginger.noisedetector.data.model.LocationSnapshot
 import com.bananaginger.noisedetector.data.remote.RemoteDataFilter
@@ -31,7 +33,8 @@ class AnomalyViewModel(
     private val repository: AnomalyRepository,
     private val motionSensorReader: MotionSensorReader,
     private val soundSensorReader: SoundSensorReader,
-    private val locationProvider: LocationProvider
+    private val locationProvider: LocationProvider,
+    private val locationSelectionStore: LocationSelectionStore
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AnomalyUiState())
     val uiState: StateFlow<AnomalyUiState> = _uiState.asStateFlow()
@@ -45,6 +48,7 @@ class AnomalyViewModel(
     private val dayFmt = SimpleDateFormat("EEEE", Locale.US)
 
     init {
+        restoreSavedLookupLocation()
         observeAnomalyHistory()
     }
 
@@ -74,7 +78,8 @@ class AnomalyViewModel(
             _uiState.update {
                 it.copy(
                     selectedLocation = location,
-                    locationSourceLabel = "Current phone location",
+                    locationSource = LocationSelectionSource.PHONE,
+                    locationSourceLabel = LocationSelectionSource.PHONE.label,
                     locationChoiceRequired = false,
                     showMapPicker = false,
                     isResolvingLocation = false,
@@ -82,6 +87,7 @@ class AnomalyViewModel(
                     errorMessage = null
                 )
             }
+            locationSelectionStore.save(LocationSelectionSource.PHONE, location)
         }
     }
 
@@ -135,18 +141,19 @@ class AnomalyViewModel(
         _uiState.update {
             it.copy(
                 selectedLocation = location,
-                locationSourceLabel = "Manual map location",
+                locationSource = LocationSelectionSource.MAP,
+                locationSourceLabel = LocationSelectionSource.MAP.label,
                 locationChoiceRequired = false,
                 showMapPicker = false,
                 statusMessage = "Manual earthquake lookup location is set.",
                 errorMessage = null
             )
         }
+        locationSelectionStore.save(LocationSelectionSource.MAP, location)
     }
 
     fun testEarthquakeApi() {
-        val location = _uiState.value.selectedLocation
-        if (location == null) {
+        if (_uiState.value.selectedLocation == null) {
             showError("Choose a lookup location before testing earthquakes.")
             return
         }
@@ -162,6 +169,19 @@ class AnomalyViewModel(
             }
 
             try {
+                val location = resolveLookupLocation()
+                if (location == null) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            locationChoiceRequired = true,
+                            statusMessage = "Choose a lookup location before testing earthquakes.",
+                            errorMessage = null
+                        )
+                    }
+                    return@launch
+                }
+
                 val earthquake = repository.testNearbyEarthquakeLookup(
                     location = location,
                     eventTimeMillis = System.currentTimeMillis()
@@ -409,6 +429,42 @@ class AnomalyViewModel(
         _uiState.update { it.copy(showAnomalyDialog = false) }
     }
 
+    private fun restoreSavedLookupLocation() {
+        val selection = locationSelectionStore.load() ?: return
+        _uiState.update {
+            it.copy(
+                selectedLocation = selection.location,
+                locationSource = selection.source,
+                locationSourceLabel = selection.source.label,
+                locationChoiceRequired = false,
+                statusMessage = "Using saved earthquake lookup location.",
+                errorMessage = null
+            )
+        }
+    }
+
+    private suspend fun resolveLookupLocation(): LocationSnapshot? {
+        val state = _uiState.value
+        val selectedLocation = state.selectedLocation ?: return null
+        if (state.locationSource != LocationSelectionSource.PHONE) {
+            return selectedLocation
+        }
+
+        val currentLocation = locationProvider.getCurrentLocation()
+            ?: return selectedLocation
+
+        locationSelectionStore.save(LocationSelectionSource.PHONE, currentLocation)
+        _uiState.update {
+            it.copy(
+                selectedLocation = currentLocation,
+                locationSource = LocationSelectionSource.PHONE,
+                locationSourceLabel = LocationSelectionSource.PHONE.label,
+                locationChoiceRequired = false
+            )
+        }
+        return currentLocation
+    }
+
     private fun observeAnomalyHistory() {
         viewModelScope.launch {
             repository.observeAnomalyHistory()
@@ -512,22 +568,31 @@ class AnomalyViewModel(
         _uiState.update {
             it.copy(
                 showAnomalyDialog = true,
-                statusMessage = "Anomaly detected."
+                isLoading = true,
+                earthquake = null,
+                statusMessage = "Anomaly detected. Checking nearby earthquakes...",
+                errorMessage = null
             )
         }
 
         viewModelScope.launch {
             try {
+                val currentLocation = resolveLookupLocation() ?: lookupLocation
                 val earthquake = repository.recordAnomaly(
                     soundLevelDb = currentState.estimatedSoundLevelDb,
                     accelerationMagnitude = currentState.accelerationMagnitude,
-                    location = lookupLocation,
+                    location = currentLocation,
                     eventTimeMillis = now
                 )
 
                 _uiState.update {
                     it.copy(
-                        statusMessage = "Anomaly detected and saved locally.",
+                        isLoading = false,
+                        statusMessage = if (earthquake != null) {
+                            "Anomaly detected and saved locally. Nearby earthquake found."
+                        } else {
+                            "Anomaly detected and saved locally. No nearby earthquake found."
+                        },
                         earthquake = earthquake,
                         errorMessage = null
                     )
@@ -535,6 +600,7 @@ class AnomalyViewModel(
             } catch (exception: Exception) {
                 _uiState.update {
                     it.copy(
+                        isLoading = false,
                         errorMessage = exception.message ?: "Unable to save anomaly."
                     )
                 }

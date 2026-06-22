@@ -42,15 +42,7 @@ class AnomalyRepository(
         location: LocationSnapshot,
         eventTimeMillis: Long
     ): EarthquakeSummary? = withContext(Dispatchers.IO) {
-        earthquakeDataSource.findNearbyEarthquake(
-            latitude = location.latitude,
-            longitude = location.longitude,
-            eventTimeMillis = eventTimeMillis,
-            maxRadiusKm = EARTHQUAKE_SEARCH_RADIUS_KM,
-            lookbackDays = EARTHQUAKE_LOOKBACK_DAYS
-        )?.also { earthquake ->
-            earthquakeDao.upsert(earthquake.toEntity())
-        }
+        findAndSaveNearbyEarthquake(location, eventTimeMillis)
     }
 
     suspend fun recordAnomaly(
@@ -60,16 +52,8 @@ class AnomalyRepository(
         eventTimeMillis: Long
     ): EarthquakeSummary? = withContext(Dispatchers.IO) {
         val earthquake = runCatching {
-            earthquakeDataSource.findNearbyEarthquake(
-                latitude = location.latitude,
-                longitude = location.longitude,
-                eventTimeMillis = eventTimeMillis,
-                maxRadiusKm = EARTHQUAKE_SEARCH_RADIUS_KM,
-                lookbackDays = EARTHQUAKE_LOOKBACK_DAYS
-            )
+            findAndSaveNearbyEarthquake(location, eventTimeMillis)
         }.getOrNull()
-
-        earthquake?.let { earthquakeDao.upsert(it.toEntity()) }
 
         val detectedAt = Date(eventTimeMillis)
         anomalyDao.insert(
@@ -94,6 +78,21 @@ class AnomalyRepository(
         )
 
         earthquake
+    }
+
+    private suspend fun findAndSaveNearbyEarthquake(
+        location: LocationSnapshot,
+        eventTimeMillis: Long
+    ): EarthquakeSummary? {
+        return earthquakeDataSource.findNearbyEarthquake(
+            latitude = location.latitude,
+            longitude = location.longitude,
+            eventTimeMillis = eventTimeMillis,
+            maxRadiusKm = EARTHQUAKE_SEARCH_RADIUS_KM,
+            lookbackDays = EARTHQUAKE_LOOKBACK_DAYS
+        )?.also { earthquake ->
+            earthquakeDao.upsert(earthquake.toEntity())
+        }
     }
 
     suspend fun uploadPendingHistory(): UploadHistoryResult = withContext(Dispatchers.IO) {

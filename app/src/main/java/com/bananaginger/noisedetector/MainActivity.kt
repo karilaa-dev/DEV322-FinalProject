@@ -28,6 +28,7 @@ import com.bananaginger.noisedetector.data.AppDatabase
 import com.bananaginger.noisedetector.data.InstallIdProvider
 import com.bananaginger.noisedetector.data.location.AndroidLocationProvider
 import com.bananaginger.noisedetector.data.location.LocationProvider
+import com.bananaginger.noisedetector.data.location.LocationSelectionStore
 import com.bananaginger.noisedetector.data.remote.AtlasConfig
 import com.bananaginger.noisedetector.data.remote.AtlasRemoteDataSource
 import com.bananaginger.noisedetector.data.remote.EarthquakeRemoteDataSource
@@ -45,6 +46,8 @@ import com.bananaginger.noisedetector.ui.LocationChoiceScreen
 import com.bananaginger.noisedetector.ui.MapLocationPickerScreen
 import com.bananaginger.noisedetector.ui.RemoteDataScreen
 import com.bananaginger.noisedetector.ui.theme.NoiseAndMotionAnomalyDetectorTheme
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -85,12 +88,17 @@ class MainActivity : ComponentActivity() {
         AndroidLocationProvider(applicationContext)
     }
 
+    private val locationSelectionStore: LocationSelectionStore by lazy {
+        LocationSelectionStore(applicationContext)
+    }
+
     private val anomalyViewModel: AnomalyViewModel by viewModels {
         AnomalyViewModelFactory(
             repository = repository,
             motionSensorReader = motionSensorReader,
             soundSensorReader = soundSensorReader,
-            locationProvider = locationProvider
+            locationProvider = locationProvider,
+            locationSelectionStore = locationSelectionStore
         )
     }
 
@@ -215,6 +223,33 @@ class MainActivity : ComponentActivity() {
                                         )
                                     } m/s²"
                                 )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(uiState.statusMessage)
+
+                                if (uiState.isLoading) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Checking nearby earthquakes...")
+                                }
+
+                                uiState.earthquake?.let { earthquake ->
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Closest earthquake:")
+                                    Text(
+                                        text = "M${earthquake.magnitude.formatNullable()} " +
+                                                earthquake.place
+                                    )
+                                    Text(
+                                        text = "Depth ${
+                                            earthquake.depthKm.formatNullable()
+                                        } km"
+                                    )
+                                    Text(
+                                        text = "Time ${
+                                            earthquake.timeMillis.toDisplayTime()
+                                        }"
+                                    )
+                                }
                             }
                         },
                         confirmButton = {
@@ -229,4 +264,19 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+private fun Double?.formatNullable(): String {
+    return this?.let {
+        String.format(Locale.US, "%.1f", it)
+    } ?: "unknown"
+}
+
+private fun Long?.toDisplayTime(): String {
+    if (this == null) return "unknown"
+    return DateFormat.getDateTimeInstance(
+        DateFormat.SHORT,
+        DateFormat.SHORT,
+        Locale.US
+    ).format(Date(this))
 }
