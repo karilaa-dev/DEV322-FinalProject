@@ -24,3 +24,9 @@ captures/
 
 # macOS
 .DS_Store
+
+# Project documentation / checklist files (local only, not part of source code)
+*.docx
+*.pdf
+checklist_text.txt
+docx_pkg/
