@@ -13,6 +13,9 @@ import com.bananaginger.noisedetector.data.model.LocationSnapshot
 import com.bananaginger.noisedetector.data.remote.RemoteDataFilter
 import com.bananaginger.noisedetector.data.remote.RemoteDataKind
 import com.bananaginger.noisedetector.data.repository.AnomalyRepository
+import com.bananaginger.noisedetector.data.settings.DetectionSettingsStore
+import com.bananaginger.noisedetector.data.settings.DetectionTriggerEvaluator
+import com.bananaginger.noisedetector.data.settings.DetectionTriggerMode
 import com.bananaginger.noisedetector.data.sensor.MotionSensorReader
 import com.bananaginger.noisedetector.data.sensor.SoundSensorReader
 import com.bananaginger.noisedetector.history.HistoryEntry
@@ -34,7 +37,8 @@ class AnomalyViewModel(
     private val motionSensorReader: MotionSensorReader,
     private val soundSensorReader: SoundSensorReader,
     private val locationProvider: LocationProvider,
-    private val locationSelectionStore: LocationSelectionStore
+    private val locationSelectionStore: LocationSelectionStore,
+    private val detectionSettingsStore: DetectionSettingsStore
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AnomalyUiState())
     val uiState: StateFlow<AnomalyUiState> = _uiState.asStateFlow()
@@ -48,6 +52,7 @@ class AnomalyViewModel(
     private val dayFmt = SimpleDateFormat("EEEE", Locale.US)
 
     init {
+        restoreDetectionSettings()
         restoreSavedLookupLocation()
         observeAnomalyHistory()
     }
@@ -288,6 +293,22 @@ class AnomalyViewModel(
         }
     }
 
+    fun updateDetectionTriggerMode(mode: DetectionTriggerMode) {
+        _uiState.update {
+            it.copy(
+                detectionTriggerMode = mode,
+                statusMessage = when (mode) {
+                    DetectionTriggerMode.BOTH ->
+                        "Anomalies require both sound and motion thresholds."
+                    DetectionTriggerMode.EITHER ->
+                        "Anomalies can be saved by sound or motion threshold."
+                },
+                errorMessage = null
+            )
+        }
+        detectionSettingsStore.saveTriggerMode(mode)
+    }
+
     fun uploadHistory() {
         viewModelScope.launch {
             _uiState.update {
@@ -368,6 +389,14 @@ class AnomalyViewModel(
         }
     }
 
+    private fun restoreDetectionSettings() {
+        _uiState.update {
+            it.copy(
+                detectionTriggerMode = detectionSettingsStore.loadTriggerMode()
+            )
+        }
+    }
+
     private suspend fun resolveLookupLocation(): LocationSnapshot? {
         val state = _uiState.value
         val selectedLocation = state.selectedLocation ?: return null
@@ -440,25 +469,30 @@ class AnomalyViewModel(
             time = timeFmt.format(detectedAt),
             day = anomaly.day ?: dayFmt.format(detectedAt),
             type = normalizedType,
-            soundLevelDb = when (normalizedType) {
-                HistoryEntry.TYPE_SOUND,
-                HistoryEntry.TYPE_SOUND_AND_MOTION -> anomaly.magnitude
-                else -> null
-            },
-            accelerationMagnitude = when (normalizedType) {
-                HistoryEntry.TYPE_MOTION,
-                HistoryEntry.TYPE_SOUND_AND_MOTION -> savedAcceleration
-                else -> null
-            },
-            motionDetected = normalizedType == HistoryEntry.TYPE_MOTION ||
-                    normalizedType == HistoryEntry.TYPE_SOUND_AND_MOTION,
+            soundLevelDb = anomaly.magnitude,
+            accelerationMagnitude = savedAcceleration,
+            soundThresholdDb = anomaly.soundThresholdDb,
+            motionThreshold = anomaly.motionThreshold,
+            soundThresholdExceeded = anomaly.soundThresholdExceeded
+                ?: (normalizedType == HistoryEntry.TYPE_SOUND ||
+                        normalizedType == HistoryEntry.TYPE_SOUND_AND_MOTION),
+            motionThresholdExceeded = anomaly.motionThresholdExceeded
+                ?: (normalizedType == HistoryEntry.TYPE_MOTION ||
+                        normalizedType == HistoryEntry.TYPE_SOUND_AND_MOTION),
+            motionDetected = anomaly.motionThresholdExceeded
+                ?: (normalizedType == HistoryEntry.TYPE_MOTION ||
+                        normalizedType == HistoryEntry.TYPE_SOUND_AND_MOTION),
             severity = anomaly.severity ?: 1,
             description = anomaly.description ?: "$normalizedType anomaly detected",
+            closestEarthquakeId = anomaly.closestEarthquakeId,
             earthquakeMagnitude = earthquake?.magnitude,
             earthquakePlace = earthquake?.place,
             latitude = earthquake?.latitude,
             longitude = earthquake?.longitude,
             depthKm = earthquake?.depthKm,
+            earthquakeTimeMillis = earthquake?.timeMillis,
+            earthquakeSource = earthquake?.source,
+            earthquakeRemoteUploadedAt = earthquake?.remoteUploadedAt,
             remoteSyncStatus = anomaly.remoteSyncStatus,
             remoteUploadedAt = anomaly.remoteUploadedAt,
             remoteError = anomaly.remoteError
@@ -468,13 +502,20 @@ class AnomalyViewModel(
     private fun evaluateAndRecordAnomaly() {
         val currentState = _uiState.value
         val lookupLocation = currentState.selectedLocation ?: return
+        val soundLevelSnapshot = currentState.estimatedSoundLevelDb
+        val accelerationSnapshot = currentState.accelerationMagnitude
+        val soundThresholdSnapshot = currentState.soundThresholdDb
+        val motionThresholdSnapshot = currentState.motionThreshold
         val motionDeviation = abs(
-            currentState.accelerationMagnitude - SensorManager.GRAVITY_EARTH
+            accelerationSnapshot - SensorManager.GRAVITY_EARTH
         )
-        val motionThresholdMet = motionDeviation > currentState.motionThreshold
-        val thresholdMet =
-            currentState.estimatedSoundLevelDb > currentState.soundThresholdDb &&
-                    motionThresholdMet
+        val soundThresholdMet = soundLevelSnapshot > soundThresholdSnapshot
+        val motionThresholdMet = motionDeviation > motionThresholdSnapshot
+        val thresholdMet = DetectionTriggerEvaluator.shouldRecord(
+            mode = currentState.detectionTriggerMode,
+            soundThresholdExceeded = soundThresholdMet,
+            motionThresholdExceeded = motionThresholdMet
+        )
 
         _uiState.update {
             it.copy(
@@ -485,17 +526,30 @@ class AnomalyViewModel(
 
         if (!thresholdMet) return
 
+        val eventType = DetectionTriggerEvaluator.eventTypeFor(
+            soundThresholdExceeded = soundThresholdMet,
+            motionThresholdExceeded = motionThresholdMet
+        ) ?: return
         val now = System.currentTimeMillis()
-        val last = lastRecordedMs[HistoryEntry.TYPE_SOUND_AND_MOTION] ?: 0L
+        val last = lastRecordedMs[eventType] ?: 0L
         if (now - last < HistoryEntry.MIN_INTERVAL_MS) return
-        lastRecordedMs[HistoryEntry.TYPE_SOUND_AND_MOTION] = now
+        lastRecordedMs[eventType] = now
 
         _uiState.update {
             it.copy(
                 showAnomalyDialog = true,
                 isLoading = true,
                 earthquake = null,
-                statusMessage = "Anomaly detected. Checking nearby earthquakes...",
+                detectedAnomalyType = eventType,
+                detectedSoundLevelDb = soundLevelSnapshot,
+                detectedAccelerationMagnitude = accelerationSnapshot,
+                detectedSoundThresholdDb = soundThresholdSnapshot,
+                detectedMotionThreshold = motionThresholdSnapshot,
+                detectedSoundThresholdExceeded = soundThresholdMet,
+                detectedMotionThresholdExceeded = motionThresholdMet,
+                statusMessage = "${
+                    exceededThresholdLabel(soundThresholdMet, motionThresholdMet)
+                } threshold exceeded. Checking nearby earthquakes...",
                 errorMessage = null
             )
         }
@@ -504,8 +558,12 @@ class AnomalyViewModel(
             try {
                 val currentLocation = resolveLookupLocation() ?: lookupLocation
                 val earthquake = repository.recordAnomaly(
-                    soundLevelDb = currentState.estimatedSoundLevelDb,
-                    accelerationMagnitude = currentState.accelerationMagnitude,
+                    soundLevelDb = soundLevelSnapshot,
+                    accelerationMagnitude = accelerationSnapshot,
+                    soundThresholdDb = soundThresholdSnapshot,
+                    motionThreshold = motionThresholdSnapshot,
+                    soundThresholdExceeded = soundThresholdMet,
+                    motionThresholdExceeded = motionThresholdMet,
                     location = currentLocation,
                     eventTimeMillis = now
                 )
@@ -530,6 +588,18 @@ class AnomalyViewModel(
                     )
                 }
             }
+        }
+    }
+
+    private fun exceededThresholdLabel(
+        soundThresholdMet: Boolean,
+        motionThresholdMet: Boolean
+    ): String {
+        return when {
+            soundThresholdMet && motionThresholdMet -> "Sound and motion"
+            soundThresholdMet -> "Sound"
+            motionThresholdMet -> "Motion"
+            else -> "No"
         }
     }
 

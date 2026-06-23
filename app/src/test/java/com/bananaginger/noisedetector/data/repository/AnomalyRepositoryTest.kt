@@ -12,6 +12,7 @@ import com.bananaginger.noisedetector.data.remote.RemoteAnomalyDocument
 import com.bananaginger.noisedetector.data.remote.RemoteDataFilter
 import com.bananaginger.noisedetector.data.remote.RemoteEarthquakeDocument
 import com.bananaginger.noisedetector.data.remote.RemoteHistoryDataSource
+import com.bananaginger.noisedetector.history.HistoryEntry
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -68,7 +69,7 @@ class AnomalyRepositoryTest {
     }
 
     @Test
-    fun recordAnomaly_persistsNoLocationOrThresholdValues() = runBlocking {
+    fun recordAnomaly_persistsLocalThresholdDetailsAndNearestEarthquake() = runBlocking {
         val anomalyDao = FakeAnomalyDao()
         val earthquakeDao = FakeEarthquakeDao()
         val repository = AnomalyRepository(
@@ -80,18 +81,107 @@ class AnomalyRepositoryTest {
         repository.recordAnomaly(
             soundLevelDb = 83.2,
             accelerationMagnitude = 13.1f,
+            soundThresholdDb = 50.0,
+            motionThreshold = 1.5f,
+            soundThresholdExceeded = true,
+            motionThresholdExceeded = true,
             location = sampleLocation(),
             eventTimeMillis = 1_765_000_000_000
         )
 
         val saved = anomalyDao.inserted.single()
+        assertEquals(HistoryEntry.TYPE_SOUND_AND_MOTION, saved.type)
         assertEquals(83.2, saved.magnitude ?: -1.0, 0.0)
         assertEquals(13.1f, saved.accelerationMagnitude ?: -1f, 0.0f)
+        assertEquals(50.0, saved.soundThresholdDb ?: -1.0, 0.0)
+        assertEquals(1.5f, saved.motionThreshold ?: -1f, 0.0f)
+        assertEquals(true, saved.soundThresholdExceeded)
+        assertEquals(true, saved.motionThresholdExceeded)
         assertEquals("uw123456", saved.closestEarthquakeId)
         assertNull(saved.metadata)
         assertFalse(saved.description.orEmpty().contains("threshold", ignoreCase = true))
         assertFalse(saved.description.orEmpty().contains("47.6101"))
         assertEquals("uw123456", earthquakeDao.saved.single().id)
+    }
+
+    @Test
+    fun recordAnomaly_persistsSoundOnlyEventType() = runBlocking {
+        val anomalyDao = FakeAnomalyDao()
+        val repository = AnomalyRepository(
+            anomalyDao,
+            FakeEarthquakeDao(),
+            FakeEarthquakeDataSource(result = null)
+        )
+
+        repository.recordAnomaly(
+            soundLevelDb = 83.2,
+            accelerationMagnitude = 9.9f,
+            soundThresholdDb = 50.0,
+            motionThreshold = 1.5f,
+            soundThresholdExceeded = true,
+            motionThresholdExceeded = false,
+            location = sampleLocation(),
+            eventTimeMillis = 1_765_000_000_000
+        )
+
+        val saved = anomalyDao.inserted.single()
+        assertEquals(HistoryEntry.TYPE_SOUND, saved.type)
+        assertEquals(true, saved.soundThresholdExceeded)
+        assertEquals(false, saved.motionThresholdExceeded)
+        assertEquals("Loud sound 83.2 dB detected", saved.description)
+    }
+
+    @Test
+    fun recordAnomaly_persistsMotionOnlyEventType() = runBlocking {
+        val anomalyDao = FakeAnomalyDao()
+        val repository = AnomalyRepository(
+            anomalyDao,
+            FakeEarthquakeDao(),
+            FakeEarthquakeDataSource(result = null)
+        )
+
+        repository.recordAnomaly(
+            soundLevelDb = 42.0,
+            accelerationMagnitude = 13.1f,
+            soundThresholdDb = 50.0,
+            motionThreshold = 1.5f,
+            soundThresholdExceeded = false,
+            motionThresholdExceeded = true,
+            location = sampleLocation(),
+            eventTimeMillis = 1_765_000_000_000
+        )
+
+        val saved = anomalyDao.inserted.single()
+        assertEquals(HistoryEntry.TYPE_MOTION, saved.type)
+        assertEquals(false, saved.soundThresholdExceeded)
+        assertEquals(true, saved.motionThresholdExceeded)
+        assertEquals("Movement 13.1 m/s² detected", saved.description)
+    }
+
+    @Test
+    fun recordAnomaly_doesNotPersistBlankEarthquakeId() = runBlocking {
+        val anomalyDao = FakeAnomalyDao()
+        val earthquakeDao = FakeEarthquakeDao()
+        val repository = AnomalyRepository(
+            anomalyDao,
+            earthquakeDao,
+            FakeEarthquakeDataSource(result = sampleEarthquake(id = " "))
+        )
+
+        repository.recordAnomaly(
+            soundLevelDb = 83.2,
+            accelerationMagnitude = 13.1f,
+            soundThresholdDb = 50.0,
+            motionThreshold = 1.5f,
+            soundThresholdExceeded = true,
+            motionThresholdExceeded = true,
+            location = sampleLocation(),
+            eventTimeMillis = 1_765_000_000_000
+        )
+
+        val saved = anomalyDao.inserted.single()
+        assertNull(saved.closestEarthquakeId)
+        assertEquals(emptyList<EarthquakeEntity>(), earthquakeDao.saved)
     }
 
     @Test
@@ -149,9 +239,11 @@ class AnomalyRepositoryTest {
         )
     }
 
-    private fun sampleEarthquake(): EarthquakeSummary {
+    private fun sampleEarthquake(
+        id: String = "uw123456"
+    ): EarthquakeSummary {
         return EarthquakeSummary(
-            id = "uw123456",
+            id = id,
             place = "10 km NW of Seattle",
             magnitude = 3.4,
             latitude = 47.7,

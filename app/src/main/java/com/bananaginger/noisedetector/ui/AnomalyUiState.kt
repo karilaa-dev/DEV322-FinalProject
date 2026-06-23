@@ -7,6 +7,7 @@ import com.bananaginger.noisedetector.data.remote.RemoteAnomalyDocument
 import com.bananaginger.noisedetector.data.remote.RemoteDataFilter
 import com.bananaginger.noisedetector.data.remote.RemoteDataKind
 import com.bananaginger.noisedetector.data.remote.RemoteEarthquakeDocument
+import com.bananaginger.noisedetector.data.settings.DetectionTriggerMode
 import com.bananaginger.noisedetector.history.HistoryEntry
 
 // BananaGinger/Kyryl: Screen state for testing one USGS earthquake API lookup.
@@ -28,6 +29,15 @@ data class AnomalyUiState(
     // threshholds
     val soundThresholdDb: Double = HistoryEntry.SOUND_THRESHOLD_DB,
     val motionThreshold: Float = HistoryEntry.MOTION_THRESHOLD,
+    val detectionTriggerMode: DetectionTriggerMode = DetectionTriggerMode.DEFAULT,
+
+    val detectedAnomalyType: String? = null,
+    val detectedSoundLevelDb: Double? = null,
+    val detectedAccelerationMagnitude: Float? = null,
+    val detectedSoundThresholdDb: Double? = null,
+    val detectedMotionThreshold: Float? = null,
+    val detectedSoundThresholdExceeded: Boolean = false,
+    val detectedMotionThresholdExceeded: Boolean = false,
 
     val selectedLocation: LocationSnapshot? = null,
     val locationSource: LocationSelectionSource? = null,

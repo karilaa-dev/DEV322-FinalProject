@@ -21,6 +21,9 @@ class AtlasPayloadFactoryTest {
         assertFalse(document.containsKey("location"))
         assertFalse(document.containsKey("soundThresholdDb"))
         assertFalse(document.containsKey("motionThreshold"))
+        assertFalse(document.containsKey("soundThresholdExceeded"))
+        assertFalse(document.containsKey("motionThresholdExceeded"))
+        assertFalse(document.containsKey("detectionTriggerMode"))
         assertEquals("install-1", document["installId"])
         assertEquals(44L, document["localAnomalyId"])
         assertEquals("uw123456", document["closestEarthquakeId"])
@@ -83,6 +86,10 @@ class AtlasPayloadFactoryTest {
             type = "SOUND_AND_MOTION",
             magnitude = 82.0,
             accelerationMagnitude = 13.0f,
+            soundThresholdDb = 50.0,
+            motionThreshold = 1.5f,
+            soundThresholdExceeded = true,
+            motionThresholdExceeded = true,
             severity = 4,
             description = "Loud sound and movement detected",
             closestEarthquakeId = "uw123456"

@@ -41,6 +41,18 @@ data class HistoryEntry(
     /** Raw accelerometer magnitude in m/s² (null for EARTHQUAKE entries). */
     val accelerationMagnitude: Float?,
 
+    /** Sound threshold that was active when this event was saved. */
+    val soundThresholdDb: Double? = null,
+
+    /** Motion threshold that was active when this event was saved. */
+    val motionThreshold: Float? = null,
+
+    /** Whether sound exceeded the active threshold when this event was saved. */
+    val soundThresholdExceeded: Boolean? = null,
+
+    /** Whether motion exceeded the active threshold when this event was saved. */
+    val motionThresholdExceeded: Boolean? = null,
+
     /** Whether motion threshold was exceeded at the moment of recording. */
     val motionDetected: Boolean,
 
@@ -57,6 +69,9 @@ data class HistoryEntry(
 
     /* ---- Earthquake-only fields (null for SOUND / MOTION) ---- */
 
+    /** Id of the nearest earthquake linked to this anomaly, or null. */
+    val closestEarthquakeId: String? = null,
+
     /** Richter magnitude of a nearby earthquake, or null. */
     val earthquakeMagnitude: Double? = null,
 
@@ -71,6 +86,15 @@ data class HistoryEntry(
 
     /** Earthquake depth in km, or null. */
     val depthKm: Double? = null,
+
+    /** Earthquake time in epoch milliseconds, or null. */
+    val earthquakeTimeMillis: Long? = null,
+
+    /** Earthquake source, such as USGS, or null. */
+    val earthquakeSource: String? = null,
+
+    /** Remote upload time for the linked earthquake record, or null. */
+    val earthquakeRemoteUploadedAt: Long? = null,
 
     val remoteSyncStatus: String = "PENDING",
     val remoteUploadedAt: Long? = null,

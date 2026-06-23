@@ -47,4 +47,21 @@ class EarthquakeDtoMapperTest {
 
         assertNull(feature.toEarthquakeSummary())
     }
+
+    @Test
+    fun toEarthquakeSummary_returnsNullWhenIdIsBlank() {
+        val feature = EarthquakeFeatureDto(
+            id = " ",
+            properties = EarthquakePropertiesDto(
+                magnitude = 3.4,
+                place = "10 km NW of Seattle",
+                time = 1_765_000_000_000
+            ),
+            geometry = EarthquakeGeometryDto(
+                coordinates = listOf(-122.3, 47.7, 12.5)
+            )
+        )
+
+        assertNull(feature.toEarthquakeSummary())
+    }
 }

@@ -15,6 +15,7 @@ import com.bananaginger.noisedetector.data.remote.AtlasRemoteDataSource
 import com.bananaginger.noisedetector.data.remote.EarthquakeRemoteDataSource
 import com.bananaginger.noisedetector.data.remote.RetrofitProvider
 import com.bananaginger.noisedetector.data.repository.AnomalyRepository
+import com.bananaginger.noisedetector.data.settings.DetectionSettingsStore
 import com.bananaginger.noisedetector.data.sensor.AndroidMotionSensorReader
 import com.bananaginger.noisedetector.data.sensor.AndroidSoundSensorReader
 import com.bananaginger.noisedetector.data.sensor.MotionSensorReader
@@ -66,13 +67,18 @@ class MainActivity : ComponentActivity() {
         LocationSelectionStore(applicationContext)
     }
 
+    private val detectionSettingsStore: DetectionSettingsStore by lazy {
+        DetectionSettingsStore(applicationContext)
+    }
+
     private val anomalyViewModel: AnomalyViewModel by viewModels {
         AnomalyViewModelFactory(
             repository = repository,
             motionSensorReader = motionSensorReader,
             soundSensorReader = soundSensorReader,
             locationProvider = locationProvider,
-            locationSelectionStore = locationSelectionStore
+            locationSelectionStore = locationSelectionStore,
+            detectionSettingsStore = detectionSettingsStore
         )
     }
 

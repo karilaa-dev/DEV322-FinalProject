@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.bananaginger.noisedetector.data.location.LocationProvider
 import com.bananaginger.noisedetector.data.location.LocationSelectionStore
 import com.bananaginger.noisedetector.data.repository.AnomalyRepository
+import com.bananaginger.noisedetector.data.settings.DetectionSettingsStore
 import com.bananaginger.noisedetector.data.sensor.MotionSensorReader
 import com.bananaginger.noisedetector.data.sensor.SoundSensorReader
 
@@ -14,7 +15,8 @@ class AnomalyViewModelFactory(
     private val motionSensorReader: MotionSensorReader,
     private val soundSensorReader: SoundSensorReader,
     private val locationProvider: LocationProvider,
-    private val locationSelectionStore: LocationSelectionStore
+    private val locationSelectionStore: LocationSelectionStore,
+    private val detectionSettingsStore: DetectionSettingsStore
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -24,7 +26,8 @@ class AnomalyViewModelFactory(
                 motionSensorReader = motionSensorReader,
                 soundSensorReader = soundSensorReader,
                 locationProvider = locationProvider,
-                locationSelectionStore = locationSelectionStore
+                locationSelectionStore = locationSelectionStore,
+                detectionSettingsStore = detectionSettingsStore
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")

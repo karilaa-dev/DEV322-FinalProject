@@ -12,6 +12,8 @@ import com.bananaginger.noisedetector.data.remote.RemoteDataKind
 import com.bananaginger.noisedetector.data.remote.RemoteHistoryDataSource
 import com.bananaginger.noisedetector.data.remote.RemoteHistoryResult
 import com.bananaginger.noisedetector.data.remote.EarthquakeDataSource
+import com.bananaginger.noisedetector.data.settings.DetectionTriggerEvaluator
+import com.bananaginger.noisedetector.history.HistoryEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -48,9 +50,17 @@ class AnomalyRepository(
     suspend fun recordAnomaly(
         soundLevelDb: Double,
         accelerationMagnitude: Float,
+        soundThresholdDb: Double,
+        motionThreshold: Float,
+        soundThresholdExceeded: Boolean,
+        motionThresholdExceeded: Boolean,
         location: LocationSnapshot,
         eventTimeMillis: Long
     ): EarthquakeSummary? = withContext(Dispatchers.IO) {
+        val type = DetectionTriggerEvaluator.eventTypeFor(
+            soundThresholdExceeded = soundThresholdExceeded,
+            motionThresholdExceeded = motionThresholdExceeded
+        ) ?: HistoryEntry.TYPE_SOUND_AND_MOTION
         val earthquake = runCatching {
             findAndSaveNearbyEarthquake(location, eventTimeMillis)
         }.getOrNull()
@@ -62,18 +72,25 @@ class AnomalyRepository(
                 timestamp = eventTimeMillis,
                 date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(detectedAt),
                 day = SimpleDateFormat("EEEE", Locale.US).format(detectedAt),
-                type = "SOUND_AND_MOTION",
+                type = type,
                 magnitude = soundLevelDb,
                 accelerationMagnitude = accelerationMagnitude,
-                severity = maxOf(
-                    soundSeverity(soundLevelDb),
-                    motionSeverity(accelerationMagnitude)
+                soundThresholdDb = soundThresholdDb,
+                motionThreshold = motionThreshold,
+                soundThresholdExceeded = soundThresholdExceeded,
+                motionThresholdExceeded = motionThresholdExceeded,
+                severity = anomalySeverity(
+                    type = type,
+                    soundLevelDb = soundLevelDb,
+                    accelerationMagnitude = accelerationMagnitude
                 ),
-                description =
-                    "Loud sound ${String.format(Locale.US, "%.1f", soundLevelDb)} dB " +
-                            "and movement ${String.format(Locale.US, "%.1f", accelerationMagnitude)} m/s² detected",
+                description = anomalyDescription(
+                    type = type,
+                    soundLevelDb = soundLevelDb,
+                    accelerationMagnitude = accelerationMagnitude
+                ),
                 metadata = null,
-                closestEarthquakeId = earthquake?.id
+                closestEarthquakeId = earthquake?.id?.takeIf { it.isNotBlank() }
             )
         )
 
@@ -90,7 +107,9 @@ class AnomalyRepository(
             eventTimeMillis = eventTimeMillis,
             maxRadiusKm = EARTHQUAKE_SEARCH_RADIUS_KM,
             lookbackDays = EARTHQUAKE_LOOKBACK_DAYS
-        )?.also { earthquake ->
+        )?.takeIf { earthquake ->
+            earthquake.id.isNotBlank()
+        }?.also { earthquake ->
             earthquakeDao.upsert(earthquake.toEntity())
         }
     }
@@ -187,6 +206,35 @@ class AnomalyRepository(
             motionDeviation > 2.0f -> 3
             motionDeviation > 1.0f -> 2
             else -> 1
+        }
+    }
+
+    private fun anomalySeverity(
+        type: String,
+        soundLevelDb: Double,
+        accelerationMagnitude: Float
+    ): Int {
+        return when (type) {
+            HistoryEntry.TYPE_SOUND -> soundSeverity(soundLevelDb)
+            HistoryEntry.TYPE_MOTION -> motionSeverity(accelerationMagnitude)
+            else -> maxOf(
+                soundSeverity(soundLevelDb),
+                motionSeverity(accelerationMagnitude)
+            )
+        }
+    }
+
+    private fun anomalyDescription(
+        type: String,
+        soundLevelDb: Double,
+        accelerationMagnitude: Float
+    ): String {
+        val soundText = String.format(Locale.US, "%.1f", soundLevelDb)
+        val motionText = String.format(Locale.US, "%.1f", accelerationMagnitude)
+        return when (type) {
+            HistoryEntry.TYPE_SOUND -> "Loud sound $soundText dB detected"
+            HistoryEntry.TYPE_MOTION -> "Movement $motionText m/s² detected"
+            else -> "Loud sound $soundText dB and movement $motionText m/s² detected"
         }
     }
 

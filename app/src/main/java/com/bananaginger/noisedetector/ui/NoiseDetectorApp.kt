@@ -42,7 +42,9 @@ import androidx.navigation.compose.rememberNavController
 import com.bananaginger.noisedetector.data.model.LocationSnapshot
 import com.bananaginger.noisedetector.data.remote.RemoteDataFilter
 import com.bananaginger.noisedetector.data.remote.RemoteDataKind
+import com.bananaginger.noisedetector.data.settings.DetectionTriggerMode
 import com.bananaginger.noisedetector.history.AnomalyHistoryScreen
+import com.bananaginger.noisedetector.history.HistoryEntry
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -122,6 +124,7 @@ fun NoiseDetectorApp(
         onSetManualLocation = viewModel::setManualLocation,
         onSoundThresholdChanged = viewModel::updateSoundThreshold,
         onMotionThresholdChanged = viewModel::updateMotionThreshold,
+        onDetectionTriggerModeChanged = viewModel::updateDetectionTriggerMode,
         onUploadHistory = viewModel::uploadHistory,
         onRemoteKindChanged = viewModel::updateRemoteKind,
         onRemoteFilterChanged = viewModel::updateRemoteFilter,
@@ -142,6 +145,7 @@ fun NoiseDetectorAppContent(
     onSetManualLocation: (LocationSnapshot) -> Unit = {},
     onSoundThresholdChanged: (Double) -> Unit = {},
     onMotionThresholdChanged: (Float) -> Unit = {},
+    onDetectionTriggerModeChanged: (DetectionTriggerMode) -> Unit = {},
     onUploadHistory: () -> Unit = {},
     onRemoteKindChanged: (RemoteDataKind) -> Unit = {},
     onRemoteFilterChanged: (RemoteDataFilter) -> Unit = {},
@@ -225,6 +229,7 @@ fun NoiseDetectorAppContent(
                     },
                     onSoundThresholdChanged = onSoundThresholdChanged,
                     onMotionThresholdChanged = onMotionThresholdChanged,
+                    onDetectionTriggerModeChanged = onDetectionTriggerModeChanged,
                     onBack = {
                         navController.popBackStack()
                     }
@@ -292,25 +297,55 @@ private fun AnomalyDetectedDialog(
         title = { Text("Anomaly Detected") },
         text = {
             Column {
-                Text("Loud sound and movement were detected.")
+                Text(
+                    text = "${
+                        uiState.detectedAnomalyType.displayAnomalyType()
+                    } threshold exceeded."
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "Sound level: ${
                         String.format(
                             Locale.US,
                             "%.1f",
-                            uiState.estimatedSoundLevelDb
+                            uiState.detectedSoundLevelDb
+                                ?: uiState.estimatedSoundLevelDb
                         )
-                    } dB"
+                    } dB (threshold ${
+                        String.format(
+                            Locale.US,
+                            "%.1f",
+                            uiState.detectedSoundThresholdDb
+                                ?: uiState.soundThresholdDb
+                        )
+                    } dB)"
+                )
+                Text(
+                    text = "Sound exceeded: ${
+                        uiState.detectedSoundThresholdExceeded.yesNo()
+                    }"
                 )
                 Text(
                     text = "Acceleration: ${
                         String.format(
                             Locale.US,
                             "%.1f",
-                            uiState.accelerationMagnitude
+                            uiState.detectedAccelerationMagnitude
+                                ?: uiState.accelerationMagnitude
                         )
-                    } m/s²"
+                    } m/s² (motion threshold ${
+                        String.format(
+                            Locale.US,
+                            "%.1f",
+                            uiState.detectedMotionThreshold
+                                ?: uiState.motionThreshold
+                        )
+                    } m/s²)"
+                )
+                Text(
+                    text = "Motion exceeded: ${
+                        uiState.detectedMotionThresholdExceeded.yesNo()
+                    }"
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -384,6 +419,19 @@ private enum class AppDestination(
 ) {
     Settings("settings"),
     MapPicker("map_picker")
+}
+
+private fun String?.displayAnomalyType(): String {
+    return when (this) {
+        HistoryEntry.TYPE_SOUND -> "Sound"
+        HistoryEntry.TYPE_MOTION -> "Motion"
+        HistoryEntry.TYPE_SOUND_AND_MOTION -> "Sound and motion"
+        else -> "Anomaly"
+    }
+}
+
+private fun Boolean.yesNo(): String {
+    return if (this) "Yes" else "No"
 }
 
 private fun Double?.formatNullable(): String {

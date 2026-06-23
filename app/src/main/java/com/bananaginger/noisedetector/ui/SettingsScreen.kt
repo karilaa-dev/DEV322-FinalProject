@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +29,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.bananaginger.noisedetector.data.location.LocationSelectionSource
 import com.bananaginger.noisedetector.data.model.LocationSnapshot
+import com.bananaginger.noisedetector.data.settings.DetectionTriggerMode
 import com.bananaginger.noisedetector.ui.theme.NoiseAndMotionAnomalyDetectorTheme
 import java.util.Locale
 
@@ -38,6 +40,7 @@ fun SettingsScreen(
     onPickOnMap: () -> Unit,
     onSoundThresholdChanged: (Double) -> Unit,
     onMotionThresholdChanged: (Float) -> Unit,
+    onDetectionTriggerModeChanged: (DetectionTriggerMode) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -184,7 +187,25 @@ fun SettingsScreen(
         )
 
         Text(
-            text = "An anomaly is saved only when sound and motion are both above their thresholds.",
+            text = "Trigger mode",
+            style = MaterialTheme.typography.titleSmall
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            DetectionTriggerMode.entries.forEach { mode ->
+                FilterChip(
+                    selected = uiState.detectionTriggerMode == mode,
+                    onClick = { onDetectionTriggerModeChanged(mode) },
+                    label = { Text(mode.displayLabel) }
+                )
+            }
+        }
+
+        Text(
+            text = uiState.detectionTriggerMode.helperText(),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -221,7 +242,17 @@ private fun SettingsScreenPreview() {
             onPickOnMap = {},
             onSoundThresholdChanged = {},
             onMotionThresholdChanged = {},
+            onDetectionTriggerModeChanged = {},
             onBack = {}
         )
+    }
+}
+
+private fun DetectionTriggerMode.helperText(): String {
+    return when (this) {
+        DetectionTriggerMode.BOTH ->
+            "An anomaly is saved only when sound and motion are both above their thresholds."
+        DetectionTriggerMode.EITHER ->
+            "An anomaly is saved when sound or motion is above its threshold."
     }
 }
