@@ -9,9 +9,10 @@ import org.junit.Test
 
 class AtlasPayloadFactoryTest {
     @Test
-    fun anomalyDocument_excludesUserLocationAndThresholdValues() {
+    fun anomalyDocument_storesTriggerAndEarthquakeSnapshotWithoutPrivateDetails() {
         val document = AtlasPayloadFactory.anomalyDocument(
             anomaly = sampleAnomaly(),
+            earthquake = sampleEarthquake(),
             installId = "install-1",
             uploadedAt = 1_765_000_010_000
         )
@@ -21,12 +22,23 @@ class AtlasPayloadFactoryTest {
         assertFalse(document.containsKey("location"))
         assertFalse(document.containsKey("soundThresholdDb"))
         assertFalse(document.containsKey("motionThreshold"))
-        assertFalse(document.containsKey("soundThresholdExceeded"))
-        assertFalse(document.containsKey("motionThresholdExceeded"))
         assertFalse(document.containsKey("detectionTriggerMode"))
         assertEquals("install-1", document["installId"])
         assertEquals(44L, document["localAnomalyId"])
+        assertEquals(true, document["soundThresholdExceeded"])
+        assertEquals(true, document["motionThresholdExceeded"])
         assertEquals("uw123456", document["closestEarthquakeId"])
+
+        @Suppress("UNCHECKED_CAST")
+        val closestEarthquake = document["closestEarthquake"] as Map<String, Any?>
+        assertEquals("10 km NW of Seattle", closestEarthquake["place"])
+        assertEquals(3.4, closestEarthquake["magnitude"])
+        assertEquals(47.7, closestEarthquake["latitude"])
+        assertEquals(-122.3, closestEarthquake["longitude"])
+        assertEquals(12.5, closestEarthquake["depthKm"])
+        assertEquals(1_765_000_000_000, closestEarthquake["timeMillis"])
+        assertEquals("USGS", closestEarthquake["source"])
+        assertFalse(closestEarthquake.containsKey("earthquakeId"))
     }
 
     @Test

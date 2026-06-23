@@ -148,6 +148,7 @@ class AnomalyRepository(
                 }
                 remote.upsertAnomaly(
                     anomaly = item.anomaly,
+                    earthquake = item.earthquake,
                     installId = installId,
                     uploadedAt = uploadedAt
                 )

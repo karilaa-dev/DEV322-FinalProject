@@ -23,10 +23,23 @@ data class RemoteAnomalyDocument(
     val type: String,
     val soundLevelDb: Double?,
     val accelerationMagnitude: Float?,
+    val soundThresholdExceeded: Boolean? = null,
+    val motionThresholdExceeded: Boolean? = null,
     val severity: Int?,
     val description: String?,
     val closestEarthquakeId: String?,
+    val closestEarthquake: RemoteEarthquakeSnapshot? = null,
     val uploadedAt: Long?
+)
+
+data class RemoteEarthquakeSnapshot(
+    val place: String? = null,
+    val magnitude: Double? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val depthKm: Double? = null,
+    val timeMillis: Long? = null,
+    val source: String? = null
 )
 
 data class RemoteEarthquakeDocument(
@@ -74,9 +87,12 @@ fun JsonObject.toRemoteAnomalyDocument(): RemoteAnomalyDocument {
         type = string("type"),
         soundLevelDb = nullableDouble("soundLevelDb"),
         accelerationMagnitude = nullableDouble("accelerationMagnitude")?.toFloat(),
+        soundThresholdExceeded = nullableBoolean("soundThresholdExceeded"),
+        motionThresholdExceeded = nullableBoolean("motionThresholdExceeded"),
         severity = nullableInt("severity"),
         description = nullableString("description"),
         closestEarthquakeId = nullableString("closestEarthquakeId"),
+        closestEarthquake = nullableObject("closestEarthquake")?.toRemoteEarthquakeSnapshot(),
         uploadedAt = nullableLong("uploadedAt")
     )
 }
@@ -105,9 +121,12 @@ fun Document.toRemoteAnomalyDocument(): RemoteAnomalyDocument {
         type = string("type"),
         soundLevelDb = nullableDouble("soundLevelDb"),
         accelerationMagnitude = nullableDouble("accelerationMagnitude")?.toFloat(),
+        soundThresholdExceeded = nullableBoolean("soundThresholdExceeded"),
+        motionThresholdExceeded = nullableBoolean("motionThresholdExceeded"),
         severity = nullableInt("severity"),
         description = nullableString("description"),
         closestEarthquakeId = nullableString("closestEarthquakeId"),
+        closestEarthquake = nullableDocument("closestEarthquake")?.toRemoteEarthquakeSnapshot(),
         uploadedAt = nullableLong("uploadedAt")
     )
 }
@@ -123,6 +142,18 @@ fun Document.toRemoteEarthquakeDocument(): RemoteEarthquakeDocument {
         timeMillis = nullableLong("timeMillis"),
         source = nullableString("source"),
         uploadedAt = nullableLong("uploadedAt")
+    )
+}
+
+fun RemoteEarthquakeDocument.toRemoteEarthquakeSnapshot(): RemoteEarthquakeSnapshot {
+    return RemoteEarthquakeSnapshot(
+        place = place.takeIf { it.isNotBlank() },
+        magnitude = magnitude,
+        latitude = latitude,
+        longitude = longitude,
+        depthKm = depthKm,
+        timeMillis = timeMillis,
+        source = source
     )
 }
 
@@ -158,6 +189,28 @@ private fun JsonObject.nullableDouble(name: String): Double? {
     return if (element.isJsonNull) null else element.asDouble
 }
 
+private fun JsonObject.nullableBoolean(name: String): Boolean? {
+    val element = get(name) ?: return null
+    return if (element.isJsonNull) null else element.asBoolean
+}
+
+private fun JsonObject.nullableObject(name: String): JsonObject? {
+    val element = get(name) ?: return null
+    return if (element.isJsonNull || !element.isJsonObject) null else element.asJsonObject
+}
+
+private fun JsonObject.toRemoteEarthquakeSnapshot(): RemoteEarthquakeSnapshot? {
+    return RemoteEarthquakeSnapshot(
+        place = nullableString("place")?.takeIf { it.isNotBlank() },
+        magnitude = nullableDouble("magnitude"),
+        latitude = nullableDouble("latitude"),
+        longitude = nullableDouble("longitude"),
+        depthKm = nullableDouble("depthKm"),
+        timeMillis = nullableLong("timeMillis"),
+        source = nullableString("source")?.takeIf { it.isNotBlank() }
+    ).takeIf { it.hasDisplayInfo() }
+}
+
 private fun Document.string(name: String): String {
     return nullableString(name).orEmpty()
 }
@@ -184,4 +237,34 @@ private fun Document.nullableInt(name: String): Int? {
 
 private fun Document.nullableDouble(name: String): Double? {
     return (get(name) as? Number)?.toDouble()
+}
+
+private fun Document.nullableBoolean(name: String): Boolean? {
+    return get(name) as? Boolean
+}
+
+private fun Document.nullableDocument(name: String): Document? {
+    return get(name) as? Document
+}
+
+private fun Document.toRemoteEarthquakeSnapshot(): RemoteEarthquakeSnapshot? {
+    return RemoteEarthquakeSnapshot(
+        place = nullableString("place")?.takeIf { it.isNotBlank() },
+        magnitude = nullableDouble("magnitude"),
+        latitude = nullableDouble("latitude"),
+        longitude = nullableDouble("longitude"),
+        depthKm = nullableDouble("depthKm"),
+        timeMillis = nullableLong("timeMillis"),
+        source = nullableString("source")?.takeIf { it.isNotBlank() }
+    ).takeIf { it.hasDisplayInfo() }
+}
+
+private fun RemoteEarthquakeSnapshot.hasDisplayInfo(): Boolean {
+    return !place.isNullOrBlank() ||
+        magnitude != null ||
+        latitude != null ||
+        longitude != null ||
+        depthKm != null ||
+        timeMillis != null ||
+        !source.isNullOrBlank()
 }

@@ -22,6 +22,7 @@ class AtlasRemoteDataSource(
 
     override suspend fun upsertAnomaly(
         anomaly: AnomalyEntity,
+        earthquake: EarthquakeEntity?,
         installId: String,
         uploadedAt: Long
     ) {
@@ -30,6 +31,7 @@ class AtlasRemoteDataSource(
             val request = AtlasPayloadFactory.anomalyUpdateRequest(
                 config = config,
                 anomaly = anomaly,
+                earthquake = earthquake,
                 installId = installId,
                 uploadedAt = uploadedAt
             )
@@ -69,12 +71,34 @@ class AtlasRemoteDataSource(
         installId: String
     ): List<RemoteAnomalyDocument> = withContext(Dispatchers.IO) {
         ensureConfigured()
-        collection(config.anomalyCollection)
+        val anomalies = collection(config.anomalyCollection)
             .find(filter.toAtlasAnomalyFilter(installId).toBsonDocument())
             .sort(Document("timestamp", -1))
             .limit(100)
             .map { it.toRemoteAnomalyDocument() }
             .toList()
+        val missingEarthquakeIds = anomalies
+            .filter { it.closestEarthquake == null }
+            .mapNotNull { it.closestEarthquakeId?.takeIf { id -> id.isNotBlank() } }
+            .distinct()
+
+        if (missingEarthquakeIds.isEmpty()) {
+            anomalies
+        } else {
+            val earthquakeSnapshotsById = collection(config.earthquakeCollection)
+                .find(Document("earthquakeId", Document("\$in", missingEarthquakeIds)))
+                .map { it.toRemoteEarthquakeDocument() }
+                .associateBy({ it.earthquakeId }, { it.toRemoteEarthquakeSnapshot() })
+
+            anomalies.map { anomaly ->
+                val earthquakeId = anomaly.closestEarthquakeId?.takeIf { it.isNotBlank() }
+                if (anomaly.closestEarthquake == null && earthquakeId != null) {
+                    anomaly.copy(closestEarthquake = earthquakeSnapshotsById[earthquakeId])
+                } else {
+                    anomaly
+                }
+            }
+        }
     }
 
     override suspend fun fetchEarthquakes(

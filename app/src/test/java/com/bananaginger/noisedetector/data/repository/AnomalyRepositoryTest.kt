@@ -230,6 +230,7 @@ class AnomalyRepositoryTest {
         assertEquals(listOf(10L), anomalyDao.uploadedIds)
         assertEquals(1, remote.uploadedAnomalies.size)
         assertEquals(1, remote.uploadedEarthquakes.size)
+        assertEquals("uw123456", remote.uploadedAnomalyEarthquakes.single()?.id)
     }
 
     private fun sampleLocation(): LocationSnapshot {
@@ -351,14 +352,17 @@ class AnomalyRepositoryTest {
     private class FakeRemoteHistoryDataSource : RemoteHistoryDataSource {
         override val isConfigured: Boolean = true
         val uploadedAnomalies = mutableListOf<AnomalyEntity>()
+        val uploadedAnomalyEarthquakes = mutableListOf<EarthquakeEntity?>()
         val uploadedEarthquakes = mutableListOf<EarthquakeEntity>()
 
         override suspend fun upsertAnomaly(
             anomaly: AnomalyEntity,
+            earthquake: EarthquakeEntity?,
             installId: String,
             uploadedAt: Long
         ) {
             uploadedAnomalies += anomaly
+            uploadedAnomalyEarthquakes += earthquake
         }
 
         override suspend fun upsertEarthquake(

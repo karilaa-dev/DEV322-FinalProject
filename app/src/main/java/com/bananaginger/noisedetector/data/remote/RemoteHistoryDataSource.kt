@@ -8,6 +8,7 @@ interface RemoteHistoryDataSource {
 
     suspend fun upsertAnomaly(
         anomaly: AnomalyEntity,
+        earthquake: EarthquakeEntity?,
         installId: String,
         uploadedAt: Long
     )

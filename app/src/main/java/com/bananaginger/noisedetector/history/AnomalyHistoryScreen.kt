@@ -185,8 +185,11 @@ private fun HistoryEntryCard(
             ) {
                 Text(
                     text = historyTypeDisplayLabel(entry.type),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = typeColor(entry.type)
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = historyTypeColor(entry.type),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "${entry.date}  ${entry.time}",
@@ -539,21 +542,6 @@ private fun MetricTile(
             overflow = TextOverflow.Ellipsis
         )
     }
-}
-
-/**
- * Returns a Material3 color for the type badge based on the anomaly type.
- *   SOUND      = tertiary (amber-ish)
- *   MOTION     = primary  (blue-ish)
- *   EARTHQUAKE = error    (red)
- */
-@Composable
-private fun typeColor(type: String) = when (type) {
-    HistoryEntry.TYPE_SOUND            -> MaterialTheme.colorScheme.tertiary
-    HistoryEntry.TYPE_MOTION           -> MaterialTheme.colorScheme.primary
-    HistoryEntry.TYPE_EARTHQUAKE       -> MaterialTheme.colorScheme.error
-    HistoryEntry.TYPE_SOUND_AND_MOTION -> MaterialTheme.colorScheme.error   // combined sound and motion
-    else                               -> MaterialTheme.colorScheme.onSurface
 }
 
 private fun HistoryEntry.exceededLabel(): String {

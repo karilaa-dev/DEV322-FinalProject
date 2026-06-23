@@ -6,6 +6,7 @@ import com.bananaginger.noisedetector.data.EarthquakeEntity
 object AtlasPayloadFactory {
     fun anomalyDocument(
         anomaly: AnomalyEntity,
+        earthquake: EarthquakeEntity?,
         installId: String,
         uploadedAt: Long
     ): Map<String, Any?> {
@@ -18,9 +19,12 @@ object AtlasPayloadFactory {
             "type" to anomaly.type,
             "soundLevelDb" to anomaly.magnitude,
             "accelerationMagnitude" to anomaly.accelerationMagnitude,
+            "soundThresholdExceeded" to anomaly.soundThresholdExceeded,
+            "motionThresholdExceeded" to anomaly.motionThresholdExceeded,
             "severity" to anomaly.severity,
             "description" to anomaly.description,
             "closestEarthquakeId" to anomaly.closestEarthquakeId,
+            "closestEarthquake" to earthquake?.toClosestEarthquakeDocument(),
             "uploadedAt" to uploadedAt
         )
     }
@@ -45,11 +49,13 @@ object AtlasPayloadFactory {
     fun anomalyUpdateRequest(
         config: AtlasConfig,
         anomaly: AnomalyEntity,
+        earthquake: EarthquakeEntity?,
         installId: String,
         uploadedAt: Long
     ): AtlasUpdateOneRequest {
         val document = anomalyDocument(
             anomaly = anomaly,
+            earthquake = earthquake,
             installId = installId,
             uploadedAt = uploadedAt
         )
@@ -83,4 +89,16 @@ object AtlasPayloadFactory {
             )
         )
     }
+}
+
+private fun EarthquakeEntity.toClosestEarthquakeDocument(): Map<String, Any?> {
+    return mapOf(
+        "place" to place,
+        "magnitude" to magnitude,
+        "latitude" to latitude,
+        "longitude" to longitude,
+        "depthKm" to depthKm,
+        "timeMillis" to timeMillis,
+        "source" to source
+    )
 }
