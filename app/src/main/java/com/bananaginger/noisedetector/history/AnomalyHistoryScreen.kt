@@ -77,8 +77,13 @@ fun AnomalyHistoryScreen(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(entries, key = { it.id }) { entry ->
-                    HistoryEntryCard(entry = entry)
+                historyEventSections(entries) { it.timestamp }.forEach { section ->
+                    item(key = "local-history-section-${section.title}") {
+                        HistorySectionDivider(section.title)
+                    }
+                    items(section.events, key = { it.id }) { entry ->
+                        HistoryEntryCard(entry = entry)
+                    }
                 }
             }
         }

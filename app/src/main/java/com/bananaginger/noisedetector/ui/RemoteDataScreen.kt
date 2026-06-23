@@ -25,6 +25,8 @@ import com.bananaginger.noisedetector.data.remote.RemoteAnomalyDocument
 import com.bananaginger.noisedetector.data.remote.RemoteDataFilter
 import com.bananaginger.noisedetector.data.remote.RemoteDataKind
 import com.bananaginger.noisedetector.data.remote.RemoteEarthquakeDocument
+import com.bananaginger.noisedetector.history.HistorySectionDivider
+import com.bananaginger.noisedetector.history.historyEventSections
 import com.bananaginger.noisedetector.history.historyTypeDisplayLabel
 import java.text.DateFormat
 import java.util.Date
@@ -109,8 +111,18 @@ fun RemoteDataScreen(
                     }
                 }
 
-                items(uiState.remoteAnomalies) { anomaly ->
-                    RemoteAnomalyCard(anomaly)
+                historyEventSections(uiState.remoteAnomalies) { it.timestamp }.forEach { section ->
+                    item(key = "remote-anomaly-section-${section.title}") {
+                        HistorySectionDivider(section.title)
+                    }
+                    items(
+                        items = section.events,
+                        key = { anomaly ->
+                            "remote-anomaly-${anomaly.installId}-${anomaly.localAnomalyId}-${anomaly.timestamp}"
+                        }
+                    ) { anomaly ->
+                        RemoteAnomalyCard(anomaly)
+                    }
                 }
             } else {
                 if (!uiState.isLoadingRemoteData &&
