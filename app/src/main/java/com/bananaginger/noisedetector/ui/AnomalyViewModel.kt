@@ -4,14 +4,21 @@ import android.hardware.SensorManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bananaginger.noisedetector.data.AnomalyEntity
+import com.bananaginger.noisedetector.data.AnomalyWithEarthquake
+import com.bananaginger.noisedetector.data.location.LocationProvider
+import com.bananaginger.noisedetector.data.location.LocationSelectionSource
+import com.bananaginger.noisedetector.data.location.LocationSelectionStore
 import com.bananaginger.noisedetector.data.model.EarthquakeSummary
 import com.bananaginger.noisedetector.data.model.LocationSnapshot
+import com.bananaginger.noisedetector.data.remote.RemoteDataFilter
+import com.bananaginger.noisedetector.data.remote.RemoteDataKind
 import com.bananaginger.noisedetector.data.repository.AnomalyRepository
+import com.bananaginger.noisedetector.data.settings.DetectionSettingsStore
+import com.bananaginger.noisedetector.data.settings.DetectionTriggerEvaluator
+import com.bananaginger.noisedetector.data.settings.DetectionTriggerMode
 import com.bananaginger.noisedetector.data.sensor.MotionSensorReader
 import com.bananaginger.noisedetector.data.sensor.SoundSensorReader
-import com.bananaginger.noisedetector.history.AnomalyServerSync
 import com.bananaginger.noisedetector.history.HistoryEntry
-import com.bananaginger.noisedetector.history.NoOpServerSync
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,203 +32,240 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
-/**
- * AnomalyViewModel — the central ViewModel for the app.
- *
- * Responsibilities:
- *   1. Start/stop sensor monitoring (microphone + accelerometer).
- *   2. Trigger earthquake API lookups via the repository.
- *   3. Record anomaly events to the in-memory history list.
- *      - History survives rotation and going to background.
- *      - History is cleared when the process is killed (app fully closed).
- *   4. Upload each new history entry to the remote server via [AnomalyServerSync].
- *      - Currently a no-op stub; replace when API endpoint is provided.
- *   5. Expose a single [AnomalyUiState] StateFlow observed by all Compose screens.
- *
- * BananaGinger/Kyryl: ViewModel owns coroutine scope and exposes StateFlow to Compose.
- */
-// BananaGinger/Kyryl: ViewModel owns coroutine scope and exposes StateFlow to Compose.
 class AnomalyViewModel(
     private val repository: AnomalyRepository,
     private val motionSensorReader: MotionSensorReader,
     private val soundSensorReader: SoundSensorReader,
-    // Server sync is injected so it can be swapped for a real implementation later.
-    // Default = NoOpServerSync (does nothing) until an API endpoint is provided.
-    private val serverSync: AnomalyServerSync = NoOpServerSync
+    private val locationProvider: LocationProvider,
+    private val locationSelectionStore: LocationSelectionStore,
+    private val detectionSettingsStore: DetectionSettingsStore
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AnomalyUiState())
     val uiState: StateFlow<AnomalyUiState> = _uiState.asStateFlow()
 
     private var motionJob: Job? = null
     private var soundJob: Job? = null
-
-    /**
-     * Tracks the last time (epoch ms) each anomaly type was recorded.
-     * Used for debounce: we skip recording if MIN_INTERVAL_MS has not elapsed.
-     * Key = one of the HistoryEntry.TYPE_* constants.
-     */
     private val lastRecordedMs = mutableMapOf<String, Long>()
 
-    // Date/time formatters for building human-readable HistoryEntry fields.
     private val dateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-    private val timeFmt = SimpleDateFormat("HH:mm:ss",   Locale.US)
-    private val dayFmt  = SimpleDateFormat("EEEE",       Locale.US)
+    private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.US)
+    private val dayFmt = SimpleDateFormat("EEEE", Locale.US)
 
-    // dylan anomaly history
     init {
+        restoreDetectionSettings()
+        restoreSavedLookupLocation()
         observeAnomalyHistory()
     }
 
-    /**
-     * Sends a test earthquake lookup for the hard-coded demo location.
-     * If a nearby earthquake is found it is also saved to history and uploaded.
-     */
-    fun testEarthquakeApi() {
+    fun useRealLocation() {
         viewModelScope.launch {
-            _uiState.update { it.copy(
-                isLoading = true,
-                statusMessage = "Checking nearby earthquakes...",
-                earthquake = null,
+            _uiState.update {
+                it.copy(
+                    isResolvingLocation = true,
+                    errorMessage = null,
+                    statusMessage = "Resolving current location..."
+                )
+            }
+
+            val location = locationProvider.getCurrentLocation()
+            if (location == null) {
+                _uiState.update {
+                    it.copy(
+                        isResolvingLocation = false,
+                        statusMessage = "Choose a lookup location before monitoring.",
+                        errorMessage = "Location permission or current location is unavailable."
+                    )
+                }
+                return@launch
+            }
+
+            _uiState.update {
+                it.copy(
+                    selectedLocation = location,
+                    locationSource = LocationSelectionSource.PHONE,
+                    locationSourceLabel = LocationSelectionSource.PHONE.label,
+                    isResolvingLocation = false,
+                    statusMessage = "Earthquake lookup location is set.",
+                    errorMessage = null
+                )
+            }
+            locationSelectionStore.save(LocationSelectionSource.PHONE, location)
+        }
+    }
+
+    fun locationPermissionDenied() {
+        _uiState.update {
+            it.copy(
+                isResolvingLocation = false,
+                statusMessage = "Choose a lookup location before monitoring.",
+                errorMessage = "Location permission was denied. Pick a location on the map or allow location access."
+            )
+        }
+    }
+
+    fun changeLookupLocation() {
+        stopMonitoring()
+        _uiState.update {
+            it.copy(
+                statusMessage = "Choose a lookup location."
+            )
+        }
+    }
+
+    fun setManualLocation(location: LocationSnapshot) {
+        _uiState.update {
+            it.copy(
+                selectedLocation = location,
+                locationSource = LocationSelectionSource.MAP,
+                locationSourceLabel = LocationSelectionSource.MAP.label,
+                statusMessage = "Manual earthquake lookup location is set.",
                 errorMessage = null
-            )}
+            )
+        }
+        locationSelectionStore.save(LocationSelectionSource.MAP, location)
+    }
+
+    fun testEarthquakeApi() {
+        if (_uiState.value.selectedLocation == null) {
+            showError("Choose a lookup location before testing earthquakes.")
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    statusMessage = "Checking nearby earthquakes...",
+                    earthquake = null,
+                    errorMessage = null
+                )
+            }
 
             try {
+                val location = resolveLookupLocation()
+                if (location == null) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            statusMessage = "Choose a lookup location before testing earthquakes.",
+                            errorMessage = null
+                        )
+                    }
+                    return@launch
+                }
+
                 val earthquake = repository.testNearbyEarthquakeLookup(
-                    location = DEMO_LOCATION,
+                    location = location,
                     eventTimeMillis = System.currentTimeMillis()
                 )
 
-                // If an earthquake was found, record it in the history.
-                earthquake?.let { eq ->
-                    maybeRecord(
-                        type = HistoryEntry.TYPE_EARTHQUAKE,
-                        soundLevelDb = _uiState.value.estimatedSoundLevelDb,
-                        accelerationMagnitude = _uiState.value.accelerationMagnitude,
-                        motionDetected = _uiState.value.motionDetected,
-                        earthquakeSummary = eq
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        statusMessage = if (earthquake != null) {
+                            "Nearby earthquake found and saved locally."
+                        } else {
+                            "No nearby earthquake found."
+                        },
+                        earthquake = earthquake,
+                        errorMessage = null
                     )
                 }
-
-                val statusMessage = if (earthquake != null)
-                    "Earthquake API test complete. Nearby event found."
-                else
-                    "Earthquake API test complete. No nearby event found."
-
-                _uiState.update { it.copy(
-                    isLoading = false,
-                    statusMessage = statusMessage,
-                    earthquake = earthquake,
-                    errorMessage = null
-                )}
             } catch (exception: Exception) {
-                _uiState.update { it.copy(
-                    isLoading = false,
-                    statusMessage = "Earthquake API test failed.",
-                    earthquake = null,
-                    errorMessage = exception.message ?: "Unknown error"
-                )}
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        statusMessage = "Earthquake API test failed.",
+                        earthquake = null,
+                        errorMessage = exception.message ?: "Unknown error"
+                    )
+                }
             }
         }
     }
-    /**
-     * Starts continuous monitoring of the microphone and accelerometer.
-     *
-     * For every sensor reading:
-     *   - The UI is updated immediately (StateFlow emission).
-     *   - If the reading exceeds the recording threshold AND the debounce
-     *     interval has passed, a new HistoryEntry is created and uploaded.
-     *
-     * Recording thresholds (deliberately low so history fills up quickly):
-     *   Sound  : > 30.0 dB  (HistoryEntry.SOUND_THRESHOLD_DB)
-     *   Motion : deviation from gravity > 0.5 m/s²  (HistoryEntry.MOTION_THRESHOLD)
-     *
-     * The merged WITH POPUP detector uses its original combined rule instead:
-     * sound > 50.0 dB AND motion deviation > 1.5 m/s².
-     */
+
     fun startMonitoring() {
-        // Guard: do not start a second pair of jobs if already running.
+        if (_uiState.value.selectedLocation == null) {
+            showError("Choose a lookup location before monitoring.")
+            return
+        }
         if (motionJob?.isActive == true || soundJob?.isActive == true) return
+        if (!motionSensorReader.isAvailable) {
+            showError("Accelerometer is unavailable.")
+            return
+        }
+        if (!soundSensorReader.isAvailable) {
+            showError("Microphone is unavailable.")
+            return
+        }
 
-        if (!motionSensorReader.isAvailable) { showError("Accelerometer is unavailable."); return }
-        if (!soundSensorReader.isAvailable)  { showError("Microphone is unavailable.");    return }
+        _uiState.update {
+            it.copy(
+                isMonitoring = true,
+                statusMessage = "Monitoring started.",
+                errorMessage = null
+            )
+        }
 
-        _uiState.update { currentState -> currentState.copy(
-            isMonitoring = true,
-            showHistory = false,
-            statusMessage = "Monitoring started. Listening for sound and motion above the selected thresholds.",
-            errorMessage = null
-        )}
-
-        // --- Motion sensor coroutine ---
         motionJob = viewModelScope.launch {
             motionSensorReader.readings()
                 .catch { exception -> handleSensorFailure(exception) }
                 .collect { reading ->
-                    // How much the device accelerates beyond resting gravity.
                     val deviationFromGravity = abs(
                         reading.accelerationMagnitude - SensorManager.GRAVITY_EARTH
                     )
-                    val motionDetected = deviationFromGravity > _uiState.value.motionThreshold
+                    val motionDetected =
+                        deviationFromGravity > _uiState.value.motionThreshold
 
-
-                    // Update UI with latest sensor values.
-                    _uiState.update { it.copy(
-                        accelerationMagnitude = reading.accelerationMagnitude,
-                        motionDetected = motionDetected
-                    )}
-
-                    // Record to history when the (low) threshold is exceeded.
-
+                    _uiState.update {
+                        it.copy(
+                            accelerationMagnitude = reading.accelerationMagnitude,
+                            motionDetected = motionDetected
+                        )
+                    }
                     evaluateAndRecordAnomaly()
                 }
         }
 
-        // --- Sound sensor coroutine ---
         soundJob = viewModelScope.launch {
             soundSensorReader.readings()
                 .catch { exception -> handleSensorFailure(exception) }
                 .collect { reading ->
-                    // Update UI with latest sound level.
-                    _uiState.update { it.copy(
-                        estimatedSoundLevelDb = reading.estimatedSoundLevelDb
-                    )}
-
-                    // Record to history when the (low) threshold is exceeded.
-
+                    _uiState.update {
+                        it.copy(estimatedSoundLevelDb = reading.estimatedSoundLevelDb)
+                    }
                     evaluateAndRecordAnomaly()
                 }
         }
     }
 
-    /** Cancels both sensor jobs and resets all sensor readings to zero. */
     fun stopMonitoring() {
         motionJob?.cancel()
         soundJob?.cancel()
         motionJob = null
         soundJob = null
 
-        _uiState.update { it.copy(
-            isMonitoring = false,
-            estimatedSoundLevelDb = 0.0,
-            accelerationMagnitude = 0.0f,
-            motionDetected = false,
-            anomalyDetected = false,
-            statusMessage = "Monitoring stopped.",
-            errorMessage = null
-        )}
+        _uiState.update {
+            it.copy(
+                isMonitoring = false,
+                estimatedSoundLevelDb = 0.0,
+                accelerationMagnitude = 0.0f,
+                motionDetected = false,
+                anomalyDetected = false,
+                statusMessage = "Monitoring stopped.",
+                errorMessage = null
+            )
+        }
     }
 
-    /** Called by the UI when the user denies the microphone permission. */
     fun microphonePermissionDenied() {
         showError("Microphone permission is required to start monitoring.")
     }
 
-    // dylan adjustable threshold sliders
     fun updateSoundThreshold(value: Double) {
         val clampedValue = value.coerceIn(0.0, 120.0)
-
-        _uiState.update { currentState ->
-            currentState.copy(
+        _uiState.update {
+            it.copy(
                 soundThresholdDb = clampedValue,
                 statusMessage = "Sound threshold set to ${
                     String.format(Locale.US, "%.1f", clampedValue)
@@ -231,16 +275,14 @@ class AnomalyViewModel(
         }
     }
 
-    // dylan adjustable threshold sliders
     fun updateMotionThreshold(value: Float) {
         val clampedValue = value.coerceIn(0.0f, 8.0f)
-        val currentAcceleration = _uiState.value.accelerationMagnitude
         val motionDetected = abs(
-            currentAcceleration - SensorManager.GRAVITY_EARTH
+            _uiState.value.accelerationMagnitude - SensorManager.GRAVITY_EARTH
         ) > clampedValue
 
-        _uiState.update { currentState ->
-            currentState.copy(
+        _uiState.update {
+            it.copy(
                 motionThreshold = clampedValue,
                 motionDetected = motionDetected,
                 statusMessage = "Motion threshold set to ${
@@ -251,382 +293,338 @@ class AnomalyViewModel(
         }
     }
 
-
-
-    /** Shows the history screen by setting the showHistory flag to true. */
-    fun viewHistory() {
-        _uiState.update { it.copy(
-            showHistory = true,
-            statusMessage = "Showing anomaly history.",
-            errorMessage = null
-        )}
+    fun updateDetectionTriggerMode(mode: DetectionTriggerMode) {
+        _uiState.update {
+            it.copy(
+                detectionTriggerMode = mode,
+                statusMessage = when (mode) {
+                    DetectionTriggerMode.BOTH ->
+                        "Anomalies require both sound and motion thresholds."
+                    DetectionTriggerMode.EITHER ->
+                        "Anomalies can be saved by sound or motion threshold."
+                },
+                errorMessage = null
+            )
+        }
+        detectionSettingsStore.saveTriggerMode(mode)
     }
 
-    /** Returns to the main screen by clearing the showHistory flag. */
-    fun hideHistory() {
-        _uiState.update { it.copy(
-            showHistory = false,
-            statusMessage = "",
-            errorMessage = null
-        )}
+    fun uploadHistory() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isUploadingHistory = true,
+                    uploadStatusMessage = "Uploading pending history...",
+                    errorMessage = null
+                )
+            }
+
+            val result = repository.uploadPendingHistory()
+            _uiState.update {
+                it.copy(
+                    isUploadingHistory = false,
+                    uploadStatusMessage = result.message,
+                    errorMessage = null
+                )
+            }
+        }
+    }
+
+    fun updateRemoteKind(kind: RemoteDataKind) {
+        _uiState.update { it.copy(remoteDataKind = kind) }
+        loadRemoteData()
+    }
+
+    fun updateRemoteFilter(filter: RemoteDataFilter) {
+        _uiState.update { it.copy(remoteDataFilter = filter) }
+        loadRemoteData()
+    }
+
+    fun loadRemoteData() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            _uiState.update {
+                it.copy(isLoadingRemoteData = true, remoteErrorMessage = null)
+            }
+
+            try {
+                val result = repository.fetchRemoteHistory(
+                    kind = state.remoteDataKind,
+                    filter = state.remoteDataFilter
+                )
+                _uiState.update {
+                    it.copy(
+                        isLoadingRemoteData = false,
+                        remoteAnomalies = result.anomalies,
+                        remoteEarthquakes = result.earthquakes,
+                        remoteErrorMessage = null
+                    )
+                }
+            } catch (exception: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoadingRemoteData = false,
+                        remoteErrorMessage = exception.message
+                            ?: "Unable to load remote data."
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissAnomalyDialog() {
+        _uiState.update { it.copy(showAnomalyDialog = false) }
+    }
+
+    private fun restoreSavedLookupLocation() {
+        val selection = locationSelectionStore.load() ?: return
+        _uiState.update {
+            it.copy(
+                selectedLocation = selection.location,
+                locationSource = selection.source,
+                locationSourceLabel = selection.source.label,
+                statusMessage = "Using saved earthquake lookup location.",
+                errorMessage = null
+            )
+        }
+    }
+
+    private fun restoreDetectionSettings() {
+        _uiState.update {
+            it.copy(
+                detectionTriggerMode = detectionSettingsStore.loadTriggerMode()
+            )
+        }
+    }
+
+    private suspend fun resolveLookupLocation(): LocationSnapshot? {
+        val state = _uiState.value
+        val selectedLocation = state.selectedLocation ?: return null
+        if (state.locationSource != LocationSelectionSource.PHONE) {
+            return selectedLocation
+        }
+
+        val currentLocation = locationProvider.getCurrentLocation()
+            ?: return selectedLocation
+
+        locationSelectionStore.save(LocationSelectionSource.PHONE, currentLocation)
+        _uiState.update {
+            it.copy(
+                selectedLocation = currentLocation,
+                locationSource = LocationSelectionSource.PHONE,
+                locationSourceLabel = LocationSelectionSource.PHONE.label,
+                isResolvingLocation = false
+            )
+        }
+        return currentLocation
     }
 
     private fun observeAnomalyHistory() {
         viewModelScope.launch {
-            repository.observeAnomalies()
+            repository.observeAnomalyHistory()
                 .catch { exception ->
-                    _uiState.update { currentState ->
-                        currentState.copy(
+                    _uiState.update {
+                        it.copy(
                             errorMessage = exception.message
                                 ?: "Unable to load anomaly history."
                         )
                     }
                 }
                 .collect { anomalies ->
-                    val savedEntries = anomalies.map { anomaly ->
-                        anomaly.toHistoryEntry()
-                    }
-
-                    _uiState.update { currentState ->
-                        val entriesNotYetInRoom =
-                            currentState.historyEntries.filter { currentEntry ->
-                                savedEntries.none { savedEntry ->
-                                    savedEntry.id == currentEntry.id
-                                }
-                            }
-
-                        currentState.copy(
-                            historyEntries =
-                                (savedEntries + entriesNotYetInRoom)
-                                    .distinctBy { entry -> entry.id }
-                                    .sortedByDescending { entry -> entry.timestamp }
+                    _uiState.update {
+                        it.copy(
+                            historyEntries = anomalies
+                                .map { anomaly -> anomaly.toHistoryEntry() }
+                                .sortedByDescending { entry -> entry.timestamp }
                         )
                     }
                 }
         }
     }
 
-    private fun AnomalyEntity.toHistoryEntry(): HistoryEntry {
-        val detectedAt = Date(timestamp)
-        val normalizedType = when (type.uppercase(Locale.US)) {
+    private fun AnomalyWithEarthquake.toHistoryEntry(): HistoryEntry {
+        val detectedAt = Date(anomaly.timestamp)
+        val normalizedType = when (anomaly.type.uppercase(Locale.US)) {
             "SOUND_AND_MOTION" -> HistoryEntry.TYPE_SOUND_AND_MOTION
             "SOUND" -> HistoryEntry.TYPE_SOUND
             "NOISE" -> HistoryEntry.TYPE_SOUND
             "MOTION" -> HistoryEntry.TYPE_MOTION
             "EARTHQUAKE" -> HistoryEntry.TYPE_EARTHQUAKE
-            else -> type.uppercase(Locale.US)
+            else -> anomaly.type.uppercase(Locale.US)
         }
 
-        val savedAcceleration = metadata
-            ?.split(';')
-            ?.firstOrNull { value ->
-                value.startsWith("accelerationMagnitude=")
-            }
-            ?.substringAfter("accelerationMagnitude=")
-            ?.toFloatOrNull()
+        val savedAcceleration = anomaly.accelerationMagnitude
+            ?: anomaly.metadata
+                ?.split(';')
+                ?.firstOrNull { value ->
+                    value.startsWith("accelerationMagnitude=")
+                }
+                ?.substringAfter("accelerationMagnitude=")
+                ?.toFloatOrNull()
 
         return HistoryEntry(
-            id = timestamp,
-            timestamp = timestamp,
-            date = date ?: dateFmt.format(detectedAt),
+            id = anomaly.id,
+            timestamp = anomaly.timestamp,
+            date = anomaly.date ?: dateFmt.format(detectedAt),
             time = timeFmt.format(detectedAt),
-            day = day ?: dayFmt.format(detectedAt),
+            day = anomaly.day ?: dayFmt.format(detectedAt),
             type = normalizedType,
-            soundLevelDb = when (normalizedType) {
-                HistoryEntry.TYPE_SOUND,
-                HistoryEntry.TYPE_SOUND_AND_MOTION -> magnitude
-                else -> null
-            },
-            accelerationMagnitude = when (normalizedType) {
-                HistoryEntry.TYPE_MOTION,
-                HistoryEntry.TYPE_SOUND_AND_MOTION -> savedAcceleration
-                else -> null
-            },
-            motionDetected = normalizedType == HistoryEntry.TYPE_MOTION ||
-                    normalizedType == HistoryEntry.TYPE_SOUND_AND_MOTION,
-            severity = severity ?: 1,
-            description = description ?: "$normalizedType anomaly detected"
+            soundLevelDb = anomaly.magnitude,
+            accelerationMagnitude = savedAcceleration,
+            soundThresholdDb = anomaly.soundThresholdDb,
+            motionThreshold = anomaly.motionThreshold,
+            soundThresholdExceeded = anomaly.soundThresholdExceeded
+                ?: (normalizedType == HistoryEntry.TYPE_SOUND ||
+                        normalizedType == HistoryEntry.TYPE_SOUND_AND_MOTION),
+            motionThresholdExceeded = anomaly.motionThresholdExceeded
+                ?: (normalizedType == HistoryEntry.TYPE_MOTION ||
+                        normalizedType == HistoryEntry.TYPE_SOUND_AND_MOTION),
+            motionDetected = anomaly.motionThresholdExceeded
+                ?: (normalizedType == HistoryEntry.TYPE_MOTION ||
+                        normalizedType == HistoryEntry.TYPE_SOUND_AND_MOTION),
+            severity = anomaly.severity ?: 1,
+            description = anomaly.description ?: "$normalizedType anomaly detected",
+            closestEarthquakeId = anomaly.closestEarthquakeId,
+            earthquakeMagnitude = earthquake?.magnitude,
+            earthquakePlace = earthquake?.place,
+            latitude = earthquake?.latitude,
+            longitude = earthquake?.longitude,
+            depthKm = earthquake?.depthKm,
+            earthquakeTimeMillis = earthquake?.timeMillis,
+            earthquakeSource = earthquake?.source,
+            earthquakeRemoteUploadedAt = earthquake?.remoteUploadedAt,
+            remoteSyncStatus = anomaly.remoteSyncStatus,
+            remoteUploadedAt = anomaly.remoteUploadedAt,
+            remoteError = anomaly.remoteError
         )
     }
 
-    fun dismissAnomalyDialog() {
-        _uiState.update { currentState ->
-            currentState.copy(
-                showAnomalyDialog = false
-            )
-        }
-    }
-
-    // dylan calculate whether something is an anomaly
     private fun evaluateAndRecordAnomaly() {
         val currentState = _uiState.value
+        val lookupLocation = currentState.selectedLocation ?: return
+        val soundLevelSnapshot = currentState.estimatedSoundLevelDb
+        val accelerationSnapshot = currentState.accelerationMagnitude
+        val soundThresholdSnapshot = currentState.soundThresholdDb
+        val motionThresholdSnapshot = currentState.motionThreshold
         val motionDeviation = abs(
-            currentState.accelerationMagnitude - SensorManager.GRAVITY_EARTH
+            accelerationSnapshot - SensorManager.GRAVITY_EARTH
         )
-        val motionThresholdMet =
-            motionDeviation > currentState.motionThreshold
+        val soundThresholdMet = soundLevelSnapshot > soundThresholdSnapshot
+        val motionThresholdMet = motionDeviation > motionThresholdSnapshot
+        val thresholdMet = DetectionTriggerEvaluator.shouldRecord(
+            mode = currentState.detectionTriggerMode,
+            soundThresholdExceeded = soundThresholdMet,
+            motionThresholdExceeded = motionThresholdMet
+        )
 
-        val thresholdMet =
-            currentState.estimatedSoundLevelDb > currentState.soundThresholdDb &&
-                    motionThresholdMet
-
-
-        _uiState.update { state ->
-            state.copy(
+        _uiState.update {
+            it.copy(
                 motionDetected = motionThresholdMet,
                 anomalyDetected = thresholdMet
             )
         }
 
-        if (!thresholdMet) {
-            return
-        }
+        if (!thresholdMet) return
 
-        val recordedEntry = maybeRecord(
-            type = HistoryEntry.TYPE_SOUND_AND_MOTION,
-            soundLevelDb = currentState.estimatedSoundLevelDb,
-            accelerationMagnitude = currentState.accelerationMagnitude,
-            motionDetected = motionThresholdMet
+        val eventType = DetectionTriggerEvaluator.eventTypeFor(
+            soundThresholdExceeded = soundThresholdMet,
+            motionThresholdExceeded = motionThresholdMet
         ) ?: return
+        val now = System.currentTimeMillis()
+        val last = lastRecordedMs[eventType] ?: 0L
+        if (now - last < HistoryEntry.MIN_INTERVAL_MS) return
+        lastRecordedMs[eventType] = now
 
-        _uiState.update { state ->
-            state.copy(
+        _uiState.update {
+            it.copy(
                 showAnomalyDialog = true,
-                statusMessage = "Anomaly detected."
+                isLoading = true,
+                earthquake = null,
+                detectedAnomalyType = eventType,
+                detectedSoundLevelDb = soundLevelSnapshot,
+                detectedAccelerationMagnitude = accelerationSnapshot,
+                detectedSoundThresholdDb = soundThresholdSnapshot,
+                detectedMotionThreshold = motionThresholdSnapshot,
+                detectedSoundThresholdExceeded = soundThresholdMet,
+                detectedMotionThresholdExceeded = motionThresholdMet,
+                statusMessage = "${
+                    exceededThresholdLabel(soundThresholdMet, motionThresholdMet)
+                } threshold exceeded. Checking nearby earthquakes...",
+                errorMessage = null
             )
         }
 
         viewModelScope.launch {
             try {
+                val currentLocation = resolveLookupLocation() ?: lookupLocation
                 val earthquake = repository.recordAnomaly(
-                    soundLevelDb = recordedEntry.soundLevelDb ?: 0.0,
-                    accelerationMagnitude =
-                        recordedEntry.accelerationMagnitude ?: 0.0f,
-                    soundThresholdDb = currentState.soundThresholdDb,
-                    motionThreshold = currentState.motionThreshold,
-                    location = DEMO_LOCATION,
-                    eventTimeMillis = recordedEntry.timestamp
+                    soundLevelDb = soundLevelSnapshot,
+                    accelerationMagnitude = accelerationSnapshot,
+                    soundThresholdDb = soundThresholdSnapshot,
+                    motionThreshold = motionThresholdSnapshot,
+                    soundThresholdExceeded = soundThresholdMet,
+                    motionThresholdExceeded = motionThresholdMet,
+                    location = currentLocation,
+                    eventTimeMillis = now
                 )
 
-                _uiState.update { state ->
-                    state.copy(
-                        statusMessage = "Anomaly detected and saved.",
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        statusMessage = if (earthquake != null) {
+                            "Anomaly detected and saved locally. Nearby earthquake found."
+                        } else {
+                            "Anomaly detected and saved locally. No nearby earthquake found."
+                        },
                         earthquake = earthquake,
                         errorMessage = null
                     )
                 }
             } catch (exception: Exception) {
-                _uiState.update { state ->
-                    state.copy(
-                        errorMessage = exception.message
-                            ?: "Unable to save anomaly."
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = exception.message ?: "Unable to save anomaly."
                     )
                 }
             }
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-
-    /**
-     * Tries to record a new [HistoryEntry] for the given [type].
-     *
-     * Debounce: if the same type was recorded less than [HistoryEntry.MIN_INTERVAL_MS]
-     * milliseconds ago, the call is ignored.
-     *
-     * After recording, the entry is uploaded to the server via [serverSync]
-     * inside a fire-and-forget coroutine. Upload errors are silently swallowed
-     * until a real API endpoint is provided.
-     *
-     * @param type                  One of HistoryEntry.TYPE_* constants.
-     * @param soundLevelDb          Current sound level in dB.
-     * @param accelerationMagnitude Current accelerometer magnitude in m/s².
-     * @param motionDetected        Whether the display threshold was exceeded.
-     * @param earthquakeSummary     Populated only for TYPE_EARTHQUAKE entries.
-     */
-    private fun maybeRecord(
-        type: String,
-        soundLevelDb: Double,
-        accelerationMagnitude: Float,
-        motionDetected: Boolean,
-        earthquakeSummary: EarthquakeSummary? = null
-    ): HistoryEntry? {
-        val now  = System.currentTimeMillis()
-        val last = lastRecordedMs[type] ?: 0L
-
-        // Debounce: skip if we recorded this type too recently.
-        if (now - last < HistoryEntry.MIN_INTERVAL_MS) return null
-        lastRecordedMs[type] = now
-
-        val date = Date(now)
-        val entry = HistoryEntry(
-            id        = now,
-            timestamp = now,
-            date      = dateFmt.format(date),
-            time      = timeFmt.format(date),
-            day       = dayFmt.format(date),
-            type      = type,
-            // Hide sensor fields for earthquake entries to avoid misleading data.
-            soundLevelDb          = if (type == HistoryEntry.TYPE_EARTHQUAKE) null else soundLevelDb,
-            accelerationMagnitude = if (type == HistoryEntry.TYPE_EARTHQUAKE) null else accelerationMagnitude,
-            motionDetected        = motionDetected,
-            severity    = computeSeverity(type, soundLevelDb, accelerationMagnitude, earthquakeSummary?.magnitude),
-            description = buildDescription(type, soundLevelDb, accelerationMagnitude, earthquakeSummary),
-            // Earthquake-specific fields (null for SOUND / MOTION entries).
-            earthquakeMagnitude = earthquakeSummary?.magnitude,
-            earthquakePlace     = earthquakeSummary?.place,
-            latitude            = earthquakeSummary?.latitude,
-            longitude           = earthquakeSummary?.longitude,
-            depthKm             = earthquakeSummary?.depthKm
-        )
-
-        // Prepend so the newest entry appears at the top of the history list.
-        _uiState.update { current ->
-            current.copy(historyEntries = listOf(entry) + current.historyEntries)
+    private fun exceededThresholdLabel(
+        soundThresholdMet: Boolean,
+        motionThresholdMet: Boolean
+    ): String {
+        return when {
+            soundThresholdMet && motionThresholdMet -> "Sound and motion"
+            soundThresholdMet -> "Sound"
+            motionThresholdMet -> "Motion"
+            else -> "No"
         }
-
-        // Fire-and-forget upload — does not block or delay the UI.
-        viewModelScope.launch {
-            try {
-                serverSync.uploadEntry(entry)
-            } catch (e: Exception) {
-                // Upload failed silently. History remains saved in memory.
-                // TODO: add a retry queue when a real server endpoint is provided.
-            }
-        }
-
-        return entry
     }
 
-    /**
-     * Computes a severity score from 1 (low) to 5 (extreme).
-     *
-     * Thresholds by type:
-     *   SOUND      : 1=30–50 dB    2=50–65    3=65–80    4=80–100   5=>100
-     *   MOTION     : 1=0.5–1 m/s²  2=1–2      3=2–4      4=4–8      5=>8
-     *   EARTHQUAKE : 1=<M2         2=M2–3     3=M3–4.5   4=M4.5–6   5=M≥6
-     */
-    private fun computeSeverity(
-        type: String,
-        soundDb: Double,
-        accel: Float,
-        magnitude: Double?
-    ): Int = when (type) {
-        HistoryEntry.TYPE_SOUND -> when {
-            soundDb > 100 -> 5
-            soundDb > 80  -> 4
-            soundDb > 65  -> 3
-            soundDb > 50  -> 2
-            else          -> 1
-        }
-        HistoryEntry.TYPE_MOTION -> {
-            val dev = abs(accel - SensorManager.GRAVITY_EARTH)
-            when {
-                dev > 8 -> 5
-                dev > 4 -> 4
-                dev > 2 -> 3
-                dev > 1 -> 2
-                else    -> 1
-            }
-        }
-        HistoryEntry.TYPE_SOUND_AND_MOTION -> {
-            val soundSeverity = when {
-                soundDb > 100 -> 5
-                soundDb > 80  -> 4
-                soundDb > 65  -> 3
-                soundDb > 50  -> 2
-                else          -> 1
-            }
-            val dev = abs(accel - SensorManager.GRAVITY_EARTH)
-            val motionSeverity = when {
-                dev > 8 -> 5
-                dev > 4 -> 4
-                dev > 2 -> 3
-                dev > 1 -> 2
-                else    -> 1
-            }
-            maxOf(soundSeverity, motionSeverity)
-        }
-        HistoryEntry.TYPE_EARTHQUAKE -> when {
-            (magnitude ?: 0.0) >= 6.0 -> 5
-            (magnitude ?: 0.0) >= 4.5 -> 4
-            (magnitude ?: 0.0) >= 3.0 -> 3
-            (magnitude ?: 0.0) >= 2.0 -> 2
-            else                      -> 1
-        }
-        else -> 1
-    }
-
-    /**
-     * Builds a short one-line description shown on each history card.
-     * Examples:
-     *   "Sound spike 72.3 dB"
-     *   "Motion detected 4.2 m/s²"
-     *   "M3.1 — 10 km NW of Seattle"
-     */
-    private fun buildDescription(
-        type: String,
-        soundDb: Double,
-        accel: Float,
-        earthquake: EarthquakeSummary?
-    ): String = when (type) {
-        HistoryEntry.TYPE_SOUND      -> "Sound spike %.1f dB".format(soundDb)
-        HistoryEntry.TYPE_MOTION     -> "Motion detected %.1f m/s\u00B2".format(accel)
-        HistoryEntry.TYPE_SOUND_AND_MOTION ->
-            "Loud sound %.1f dB and movement %.1f m/s\u00B2 detected".format(
-                soundDb,
-                accel
-            )
-        HistoryEntry.TYPE_EARTHQUAKE ->
-            if (earthquake != null)
-                "M%.1f \u2014 %s".format(earthquake.magnitude ?: 0.0, earthquake.place)
-            else "Earthquake detected"
-        else -> type
-    }
-
-    /** Sets an error message and stops monitoring. */
     private fun showError(message: String) {
-        _uiState.update { it.copy(
-            isMonitoring = false,
-            statusMessage = "Unable to start monitoring.",
-            errorMessage = message
-        )}
+        _uiState.update {
+            it.copy(
+                isMonitoring = false,
+                statusMessage = "Action unavailable.",
+                errorMessage = message
+            )
+        }
     }
 
-    /** Handles unexpected sensor stream failures and cancels both jobs. */
     private fun handleSensorFailure(exception: Throwable) {
         if (exception is CancellationException) return
         motionJob?.cancel()
         soundJob?.cancel()
         motionJob = null
         soundJob = null
-        _uiState.update { it.copy(
-            isMonitoring = false,
-            statusMessage = "Sensor monitoring stopped.",
-            errorMessage = exception.message ?: "Unable to read sensor data."
-        )}
-    }
-
-    companion object {
-        /**
-         * Threshold for the UI "Motion detected" label.
-         * This is higher than HistoryEntry.MOTION_THRESHOLD which controls recording.
-         */
-        private const val MOTION_DISPLAY_THRESHOLD = 1.5f
-
-        // dylan anomaly threshholds
-        // THIS IS WHAT IS SHOULD BE
-        private const val SOUND_THRESHOLD_DB = 50.0
-
-        // ZERO FOR TESTING PURPOSE
-        //private const val SOUND_THRESHOLD_DB = 00.0
-
-        /** Demo location used for earthquake API tests (Bellevue, WA). */
-        val DEMO_LOCATION = LocationSnapshot(
-            latitude  = 47.6101,
-            longitude = -122.2015
-        )
+        _uiState.update {
+            it.copy(
+                isMonitoring = false,
+                statusMessage = "Sensor monitoring stopped.",
+                errorMessage = exception.message ?: "Unable to read sensor data."
+            )
+        }
     }
 }

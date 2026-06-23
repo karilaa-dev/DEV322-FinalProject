@@ -12,6 +12,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
@@ -63,6 +64,42 @@ interface AnomalyDao {
      */
     @Query("SELECT * FROM anomalies ORDER BY timestamp DESC")
     fun getAll(): Flow<List<AnomalyEntity>>
+
+    @Transaction
+    @Query("SELECT * FROM anomalies ORDER BY timestamp DESC")
+    fun getAllWithEarthquakes(): Flow<List<AnomalyWithEarthquake>>
+
+    @Transaction
+    @Query(
+        "SELECT * FROM anomalies " +
+                "WHERE remoteUploadedAt IS NULL " +
+                "ORDER BY timestamp ASC"
+    )
+    suspend fun getPendingUpload(): List<AnomalyWithEarthquake>
+
+    @Query(
+        "UPDATE anomalies " +
+                "SET remoteUploadedAt = :uploadedAt, " +
+                "remoteSyncStatus = :status, " +
+                "remoteError = NULL " +
+                "WHERE id = :id"
+    )
+    suspend fun markUploaded(
+        id: Long,
+        uploadedAt: Long,
+        status: String = AnomalyEntity.SYNC_UPLOADED
+    )
+
+    @Query(
+        "UPDATE anomalies " +
+                "SET remoteSyncStatus = :status, remoteError = :error " +
+                "WHERE id = :id"
+    )
+    suspend fun markUploadFailed(
+        id: Long,
+        error: String,
+        status: String = AnomalyEntity.SYNC_FAILED
+    )
 
     // Observe a single anomaly by id. Emits null if not found.
     /**
