@@ -137,7 +137,7 @@ private fun HistoryEntryCard(entry: HistoryEntry) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = entry.type,
+                    text = historyTypeDisplayLabel(entry.type),
                     style = MaterialTheme.typography.labelMedium,
                     color = typeColor(entry.type)
                 )

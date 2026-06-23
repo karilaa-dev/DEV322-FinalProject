@@ -25,6 +25,7 @@ import com.bananaginger.noisedetector.data.remote.RemoteAnomalyDocument
 import com.bananaginger.noisedetector.data.remote.RemoteDataFilter
 import com.bananaginger.noisedetector.data.remote.RemoteDataKind
 import com.bananaginger.noisedetector.data.remote.RemoteEarthquakeDocument
+import com.bananaginger.noisedetector.history.historyTypeDisplayLabel
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -159,7 +160,7 @@ private fun RemoteAnomalyCard(anomaly: RemoteAnomalyDocument) {
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = anomaly.type,
+                text = historyTypeDisplayLabel(anomaly.type),
                 style = MaterialTheme.typography.titleMedium
             )
             Text(
